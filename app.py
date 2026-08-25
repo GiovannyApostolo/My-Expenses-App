@@ -7,7 +7,8 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
+# Nombre exacto para la librería legacy
+model = genai.GenerativeModel("models/gemini-1.5-flash")
 
 def enviar_mensaje_whatsapp(telefono, texto):
     phone_id = os.getenv("PHONE_NUMBER_ID")
