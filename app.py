@@ -1,27 +1,32 @@
 import os
 import json
-from flask import Flask, request, jsonify
+import requests
 import google.generativeai as genai
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Configurar API Key de Gemini
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel("gemini-1.5-flash")
 
-VERIFY_TOKEN = "mi_token_secreto_123"
-
-SYSTEM_INSTRUCTION = """
-Eres un asistente experto en finanzas personales. Analiza el mensaje y extrae los datos del gasto.
-Categorías válidas: Vivienda, Servicios, Alimentación, Transporte, Comida fuera, Entretenimiento, Suscripciones, Compras, Salud y Bienestar, Finanzas / Pagos, Varios.
-Responde ÚNICAMENTE en JSON con la estructura:
-{"monto": float, "moneda": "EUR", "categoria": "string", "comercio": "string", "fecha": "YYYY-MM-DD", "concepto": "string"}
-"""
-
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=SYSTEM_INSTRUCTION,
-    generation_config={"response_mime_type": "application/json"}
-)
+def enviar_mensaje_whatsapp(telefono, texto):
+    phone_id = os.getenv("PHONE_NUMBER_ID")
+    token = os.getenv("WHATSAPP_TOKEN")
+    url = f"https://graph.facebook.com/v20.0/{phone_id}/messages"
+    
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": telefono,
+        "type": "text",
+        "text": {"body": texto}
+    }
+    res = requests.post(url, json=payload, headers=headers)
+    print("STATUS ENVIO META:", res.status_code)
+    print("RESPUESTA META:", res.text)
 
 @app.route("/", methods=["GET"])
 def home():
@@ -33,18 +38,50 @@ def webhook():
         mode = request.args.get("hub.mode")
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
-
-        if mode and token:
-            if mode == "subscribe" and token == VERIFY_TOKEN:
-                return challenge, 200
-            else:
-                return "Token incorrecto", 403
-        return "Error de validación", 400
+        
+        if mode == "subscribe" and token == os.getenv("WEBHOOK_VERIFY_TOKEN", "mi_token_secreto_123"):
+            return challenge, 200
+        return "Forbidden", 403
 
     elif request.method == "POST":
         data = request.get_json()
-        print("Mensaje recibido:", json.dumps(data, indent=2))
+        
+        try:
+            entry = data.get("entry", [])[0]
+            changes = entry.get("changes", [])[0]
+            value = changes.get("value", {})
+            
+            if "messages" in value:
+                mensaje_obj = value["messages"][0]
+                remitente = mensaje_obj["from"]
+                
+                if mensaje_obj.get("type") == "text":
+                    texto = mensaje_obj["text"]["body"]
+                    print(f"--- NUEVO MENSAJE DE {remitente}: {texto} ---")
+                    
+                    prompt = (
+                        f"Extrae el gasto de este texto: '{texto}'. "
+                        "Responde ÚNICAMENTE en formato JSON con las claves: "
+                        "monto (numero), moneda (string), categoria (string), comercio (string), concepto (string)."
+                    )
+                    
+                    res_gemini = model.generate_content(prompt)
+                    clean_json = res_gemini.text.replace("```json", "").replace("```", "").strip()
+                    gasto = json.loads(clean_json)
+                    
+                    respuesta = (
+                        f"📝 *Gasto registrado*\n"
+                        f"• *Monto:* {gasto.get('monto')} {gasto.get('moneda', 'EUR')}\n"
+                        f"• *Categoría:* {gasto.get('categoria')}\n"
+                        f"• *Comercio:* {gasto.get('comercio')}\n"
+                        f"• *Concepto:* {gasto.get('concepto')}"
+                    )
+                    
+                    enviar_mensaje_whatsapp(remitente, respuesta)
+        except Exception as e:
+            print("❌ ERROR EN PROCESAMIENTO:", str(e))
+
         return jsonify({"status": "recibido"}), 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
