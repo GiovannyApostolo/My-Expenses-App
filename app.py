@@ -1,13 +1,33 @@
 import os
 import json
 import requests
-import google.generativeai as genai
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
+def procesar_con_gemini(texto):
+    api_key = os.getenv("GEMINI_API_KEY")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    prompt = (
+        f"Extrae el gasto de este texto: '{texto}'. "
+        "Responde ÚNICAMENTE en formato JSON plano con las claves exactas: "
+        "monto (numero), moneda (string), categoria (string), comercio (string), concepto (string)."
+    )
+    
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    
+    response = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+    data = response.json()
+    
+    # Extraer el texto retornado por la API
+    texto_res = data['candidates'][0]['content']['parts'][0]['text']
+    clean_json = texto_res.replace("```json", "").replace("```", "").strip()
+    return json.loads(clean_json)
 
 def enviar_mensaje_whatsapp(telefono, texto):
     phone_id = os.getenv("PHONE_NUMBER_ID")
@@ -59,15 +79,7 @@ def webhook():
                     texto = mensaje_obj["text"]["body"]
                     print(f"--- NUEVO MENSAJE DE {remitente}: {texto} ---")
                     
-                    prompt = (
-                        f"Extrae el gasto de este texto: '{texto}'. "
-                        "Responde ÚNICAMENTE en formato JSON con las claves: "
-                        "monto (numero), moneda (string), categoria (string), comercio (string), concepto (string)."
-                    )
-                    
-                    res_gemini = model.generate_content(prompt)
-                    clean_json = res_gemini.text.replace("```json", "").replace("```", "").strip()
-                    gasto = json.loads(clean_json)
+                    gasto = procesar_con_gemini(texto)
                     
                     respuesta = (
                         f"📝 *Gasto registrado*\n"
