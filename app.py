@@ -1,14 +1,13 @@
 import os
 import json
 import requests
-import google.generativeai as genai
 from flask import Flask, request, jsonify
+from google import genai
 
 app = Flask(__name__)
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-# Nombre exacto para la librería legacy
-model = genai.GenerativeModel("models/gemini-1.5-flash")
+# Inicializar cliente Gemini con la librería moderna
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 def enviar_mensaje_whatsapp(telefono, texto):
     phone_id = os.getenv("PHONE_NUMBER_ID")
@@ -66,7 +65,12 @@ def webhook():
                         "monto (numero), moneda (string), categoria (string), comercio (string), concepto (string)."
                     )
                     
-                    res_gemini = model.generate_content(prompt)
+                    # Llamada con el nuevo SDK
+                    res_gemini = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt,
+                    )
+                    
                     clean_json = res_gemini.text.replace("```json", "").replace("```", "").strip()
                     gasto = json.loads(clean_json)
                     
