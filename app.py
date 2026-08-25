@@ -1,37 +1,18 @@
 import os
 import json
+from flask import Flask, request, jsonify
 import google.generativeai as genai
-from PIL import Image
 
-# Configuración del modelo Gemini
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+app = Flask(__name__)
+
+# Configurar API Key de Gemini
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 SYSTEM_INSTRUCTION = """
-Eres un asistente experto en finanzas personales. Tu trabajo es analizar mensajes de texto, 
-imágenes de tickets/recibos o fragmentos de extractos bancarios y extraer los datos del gasto.
-
-Categorías disponibles exclusivamente:
-- Vivienda
-- Servicios
-- Alimentación
-- Transporte
-- Comida fuera
-- Entretenimiento
-- Suscripciones
-- Compras
-- Salud y Bienestar
-- Finanzas / Pagos
-- Varios
-
-Debes responder ÚNICAMENTE en formato JSON estricto con la siguiente estructura:
-{
-  "monto": float,
-  "moneda": "EUR" | "USD" | "MXN" etc,
-  "categoria": "Nombre de la categoría",
-  "comercio": "Nombre del establecimiento o desconocido",
-  "fecha": "YYYY-MM-DD",
-  "concepto": "Descripción corta del gasto"
-}
+Eres un asistente experto en finanzas personales. Analiza el mensaje y extrae los datos del gasto.
+Categorías válidas: Vivienda, Servicios, Alimentación, Transporte, Comida fuera, Entretenimiento, Suscripciones, Compras, Salud y Bienestar, Finanzas / Pagos, Varios.
+Responde ÚNICAMENTE en JSON con la estructura:
+{"monto": float, "moneda": "EUR", "categoria": "string", "comercio": "string", "fecha": "YYYY-MM-DD", "concepto": "string"}
 """
 
 model = genai.GenerativeModel(
@@ -40,15 +21,14 @@ model = genai.GenerativeModel(
     generation_config={"response_mime_type": "application/json"}
 )
 
-def procesar_gasto_texto(texto_usuario):
-    response = model.generate_content(texto_usuario)
-    return json.loads(response.text)
+@app.route("/", methods=["GET"])
+def home():
+    return "Bot de Gastos Activo", 200
 
-def procesar_gasto_imagen(ruta_imagen):
-    imagen = Image.open(ruta_imagen)
-    response = model.generate_content(["Extrae los datos de este ticket o recibo:", imagen])
-    return json.loads(response.text)
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    return jsonify({"status": "recibido"}), 200
 
-# --- Ejemplo de uso ---
-# resultado_texto = procesar_gasto_texto("Ayer gasté 18.50 euros en el Bar Pepito comiendo con un amigo")
-# print(resultado_texto)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
