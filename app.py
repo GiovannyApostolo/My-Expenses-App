@@ -24,9 +24,22 @@ def procesar_con_gemini(texto):
     response = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
     data = response.json()
     
-    # Extraer el texto retornado por la API
+    # Muestra en logs la respuesta pura para depuración
+    print("RESPUESTA RAW GEMINI:", data)
+    
+    if "candidates" not in data or not data["candidates"]:
+        error_msg = data.get('error', {}).get('message', 'Sin respuesta válida de Gemini')
+        raise ValueError(f"Error Gemini API: {error_msg}")
+        
     texto_res = data['candidates'][0]['content']['parts'][0]['text']
-    clean_json = texto_res.replace("```json", "").replace("```", "").strip()
+    
+    # Limpieza de bloque de código Markdown
+    clean_json = texto_res.strip()
+    if clean_json.startswith("```"):
+        clean_json = clean_json.split("\n", 1)[-1]
+        clean_json = clean_json.rsplit("```", 1)[0]
+    clean_json = clean_json.strip()
+    
     return json.loads(clean_json)
 
 def enviar_mensaje_whatsapp(telefono, texto):
