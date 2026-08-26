@@ -1,112 +1,58 @@
-import os
-import json
-import requests
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, Request, HTTPException
 
-app = Flask(__name__)
+app = FastAPI()
 
-def procesar_con_gemini(texto):
-    api_key = os.getenv("GEMINI_API_KEY")
-    # Endpoint v1 estable
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
-    
-    prompt = (
-        f"Extrae el gasto de este texto: '{texto}'. "
-        "Responde ÚNICAMENTE en formato JSON plano con las claves exactas: "
-        "monto (numero), moneda (string), categoria (string), comercio (string), concepto (string)."
-    )
-    
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }]
-    }
-    
-    response = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
-    data = response.json()
-    
-    print("RESPUESTA RAW GEMINI:", data)
-    
-    if "candidates" not in data or not data["candidates"]:
-        error_msg = data.get('error', {}).get('message', 'Sin respuesta válida de Gemini')
-        raise ValueError(f"Error Gemini API: {error_msg}")
-        
-    texto_res = data['candidates'][0]['content']['parts'][0]['text']
-    
-    # Limpieza de formato markdown
-    clean_json = texto_res.strip()
-    if clean_json.startswith("```"):
-        clean_json = clean_json.split("\n", 1)[-1]
-        clean_json = clean_json.rsplit("```", 1)[0]
-    clean_json = clean_json.strip()
-    
-    return json.loads(clean_json)
+# Este token lo inventas tú y lo pondrás en el panel de Meta Developer
+VERIFY_TOKEN = "mi_token_secreto_finanzas_123"
 
-def enviar_mensaje_whatsapp(telefono, texto):
-    phone_id = os.getenv("PHONE_NUMBER_ID")
-    token = os.getenv("WHATSAPP_TOKEN")
-    url = f"https://graph.facebook.com/v20.0/{phone_id}/messages"
+@app.get("/webhook")
+async def verify_webhook(request: Request):
+    """
+    Paso 1: Meta hace una petición GET aquí para vincular tu app.
+    """
+    hub_mode = request.query_params.get("hub.mode")
+    hub_challenge = request.query_params.get("hub.challenge")
+    hub_verify_token = request.query_params.get("hub.verify_token")
+
+    if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
+        print("¡Webhook verificado por Meta!")
+        # Meta exige que devuelvas el hub.challenge como número
+        return int(hub_challenge)
     
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": telefono,
-        "type": "text",
-        "text": {"body": texto}
-    }
-    res = requests.post(url, json=payload, headers=headers)
-    print("STATUS ENVIO META:", res.status_code)
-    print("RESPUESTA META:", res.text)
+    raise HTTPException(status_code=403, detail="Token de verificación inválido")
 
-@app.route("/", methods=["GET"])
-def home():
-    return "Bot de Gastos Activo", 200
-
-@app.route("/webhook", methods=["GET", "POST"])
-def webhook():
-    if request.method == "GET":
-        mode = request.args.get("hub.mode")
-        token = request.args.get("hub.verify_token")
-        challenge = request.args.get("hub.challenge")
-        
-        if mode == "subscribe" and token == os.getenv("WEBHOOK_VERIFY_TOKEN", "mi_token_secreto_123"):
-            return challenge, 200
-        return "Forbidden", 403
-
-    elif request.method == "POST":
-        data = request.get_json()
-        
+@app.post("/webhook")
+async def receive_message(request: Request):
+    """
+    Paso 2: Aquí llegan los mensajes (texto, imágenes) que envíes a tu bot.
+    """
+    body = await request.json()
+    
+    # Verificamos que sea un evento de WhatsApp
+    if body.get("object") == "whatsapp_business_account":
         try:
-            entry = data.get("entry", [])[0]
-            changes = entry.get("changes", [])[0]
-            value = changes.get("value", {})
+            entry = body["entry"][0]
+            changes = entry["changes"][0]
+            value = changes["value"]
             
+            # Filtramos para asegurarnos de que es un mensaje de un usuario
             if "messages" in value:
-                mensaje_obj = value["messages"][0]
-                remitente = mensaje_obj["from"]
+                message = value["messages"][0]
+                sender_phone = message["from"]
                 
-                if mensaje_obj.get("type") == "text":
-                    texto = mensaje_obj["text"]["body"]
-                    print(f"--- NUEVO MENSAJE DE {remitente}: {texto} ---")
+                if message["type"] == "text":
+                    text = message["text"]["body"]
+                    print(f"💰 Nuevo gasto recibido de {sender_phone}: {text}")
+                    # Aquí enviaremos el texto a la IA
                     
-                    gasto = procesar_con_gemini(texto)
+                elif message["type"] == "image":
+                    image_id = message["image"]["id"]
+                    print(f"📸 Foto de recibo recibida de {sender_phone} (ID: {image_id})")
+                    # Aquí descargaremos la foto y se la pasaremos a la IA con OCR
                     
-                    respuesta = (
-                        f"📝 *Gasto registrado*\n"
-                        f"• *Monto:* {gasto.get('monto')} {gasto.get('moneda', 'EUR')}\n"
-                        f"• *Categoría:* {gasto.get('categoria')}\n"
-                        f"• *Comercio:* {gasto.get('comercio')}\n"
-                        f"• *Concepto:* {gasto.get('concepto')}"
-                    )
-                    
-                    enviar_mensaje_whatsapp(remitente, respuesta)
-        except Exception as e:
-            print("❌ ERROR EN PROCESAMIENTO:", str(e))
-
-        return jsonify({"status": "recibido"}), 200
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+        except (KeyError, IndexError):
+            # Ignoramos eventos de estado (como "mensaje entregado" o "leído")
+            pass 
+            
+    # Siempre hay que devolver un 200 OK rapidísimo, si no Meta reintentará el envío
+    return {"status": "ok"}
