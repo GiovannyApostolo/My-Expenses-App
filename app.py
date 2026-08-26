@@ -6,12 +6,27 @@ import asyncio
 import httpx
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from PIL import Image
 from google import genai
 from google.genai import types
 
 app = FastAPI()
+
+# --- Deduplicación de mensajes (Meta reintenta el mismo mensaje si tardamos en responder) ---
+IDS_PROCESADOS = set()
+ORDEN_IDS = []
+MAX_IDS_GUARDADOS = 500
+
+def ya_procesado(message_id: str) -> bool:
+    if message_id in IDS_PROCESADOS:
+        return True
+    IDS_PROCESADOS.add(message_id)
+    ORDEN_IDS.append(message_id)
+    if len(ORDEN_IDS) > MAX_IDS_GUARDADOS:
+        viejo = ORDEN_IDS.pop(0)
+        IDS_PROCESADOS.discard(viejo)
+    return False
 
 # --- 1. CONFIGURACIÓN Y VARIABLES DE ENTORNO (De Render) ---
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
@@ -233,6 +248,42 @@ def formatear_confirmacion(datos: dict) -> str:
     )
 
 # --- 6. RUTAS DEL WEBHOOK ---
+async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
+    try:
+        # Procesar mensajes de texto
+        if message["type"] == "text":
+            texto = message["text"]["body"]
+            periodo = detectar_periodo_informe(texto)
+
+            if periodo:
+                # El usuario pidió un resumen/informe
+                desde, hasta = calcular_rango_fechas(periodo)
+                gastos = await obtener_gastos(numero_remitente, desde, hasta)
+                informe = generar_texto_informe(periodo, gastos)
+                print(f"📊 Informe {periodo} generado para {numero_remitente} ({len(gastos)} gastos)")
+                await enviar_mensaje_whatsapp(numero_remitente, informe)
+            else:
+                # Es un gasto normal
+                datos = await procesar_gasto_con_ia(texto)
+                print(f"✅ Gasto registrado (Texto): {datos}")
+                if datos.get("categoria") != "Error":
+                    await guardar_gasto(numero_remitente, datos)
+                await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
+
+        # Procesar fotos de recibos
+        elif message["type"] == "image":
+            media_id = message["image"]["id"]
+            imagen = await descargar_imagen_whatsapp(media_id)
+            datos = await procesar_recibo_con_ia(imagen)
+            print(f"✅ Gasto registrado (Foto): {datos}")
+            if datos.get("categoria") != "Error":
+                await guardar_gasto(numero_remitente, datos)
+            await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
+
+    except Exception as e:
+        print(f"⚠️ Error procesando/respondiendo mensaje: {type(e).__name__}: {e}")
+
+# --- 6. RUTAS DEL WEBHOOK ---
 @app.get("/webhook")
 async def verify_webhook(request: Request):
     hub_mode = request.query_params.get("hub.mode")
@@ -245,7 +296,7 @@ async def verify_webhook(request: Request):
     raise HTTPException(status_code=403, detail="Token inválido")
 
 @app.post("/webhook")
-async def receive_message(request: Request):
+async def receive_message(request: Request, background_tasks: BackgroundTasks):
     body = await request.json()
 
     if body.get("object") == "whatsapp_business_account":
@@ -257,40 +308,13 @@ async def receive_message(request: Request):
             if "messages" in value:
                 message = value["messages"][0]
                 numero_remitente = message["from"]
+                message_id = message.get("id", "")
 
-                try:
-                    # Procesar mensajes de texto
-                    if message["type"] == "text":
-                        texto = message["text"]["body"]
-                        periodo = detectar_periodo_informe(texto)
-
-                        if periodo:
-                            # El usuario pidió un resumen/informe
-                            desde, hasta = calcular_rango_fechas(periodo)
-                            gastos = await obtener_gastos(numero_remitente, desde, hasta)
-                            informe = generar_texto_informe(periodo, gastos)
-                            print(f"📊 Informe {periodo} generado para {numero_remitente} ({len(gastos)} gastos)")
-                            await enviar_mensaje_whatsapp(numero_remitente, informe)
-                        else:
-                            # Es un gasto normal
-                            datos = await procesar_gasto_con_ia(texto)
-                            print(f"✅ Gasto registrado (Texto): {datos}")
-                            if datos.get("categoria") != "Error":
-                                await guardar_gasto(numero_remitente, datos)
-                            await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
-
-                    # Procesar fotos de recibos
-                    elif message["type"] == "image":
-                        media_id = message["image"]["id"]
-                        imagen = await descargar_imagen_whatsapp(media_id)
-                        datos = await procesar_recibo_con_ia(imagen)
-                        print(f"✅ Gasto registrado (Foto): {datos}")
-                        if datos.get("categoria") != "Error":
-                            await guardar_gasto(numero_remitente, datos)
-                        await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
-
-                except Exception as e:
-                    print(f"⚠️ Error procesando/respondiendo mensaje: {type(e).__name__}: {e}")
+                if ya_procesado(message_id):
+                    print(f"🔁 Mensaje duplicado ignorado: {message_id}")
+                else:
+                    # Se procesa en segundo plano; respondemos a Meta de inmediato.
+                    background_tasks.add_task(procesar_mensaje_entrante, message, numero_remitente)
 
         except (KeyError, IndexError) as e:
             print(f"⚠️ Error parseando webhook: {e}")
