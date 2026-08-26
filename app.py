@@ -1,6 +1,7 @@
 import os
 import json
 import io
+import asyncio
 import httpx
 from fastapi import FastAPI, Request, HTTPException
 from PIL import Image
@@ -20,6 +21,21 @@ MODELO = "gemini-3.7-flash"
 GENERATION_CONFIG = types.GenerateContentConfig(
     response_mime_type="application/json"
 )
+
+# --- Helper con reintentos para llamadas HTTP salientes ---
+async def post_con_reintentos(url, headers, json_payload, intentos=3):
+    ultimo_error = None
+    for intento in range(1, intentos + 1):
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client_http:
+                respuesta = await client_http.post(url, headers=headers, json=json_payload)
+                return respuesta
+        except (httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadTimeout) as e:
+            ultimo_error = e
+            print(f"⏳ Intento {intento}/{intentos} falló ({type(e).__name__}), reintentando...")
+            await asyncio.sleep(2 * intento)  # backoff: 2s, 4s, 6s...
+    print(f"⚠️ Todos los intentos fallaron: {type(ultimo_error).__name__}: {ultimo_error}")
+    return None
 
 # --- 2. FUNCIONES DE INTELIGENCIA ARTIFICIAL ---
 async def procesar_gasto_con_ia(texto_usuario: str):
@@ -81,15 +97,10 @@ async def enviar_mensaje_whatsapp(numero_destino: str, texto: str):
         "type": "text",
         "text": {"body": texto},
     }
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client_http:
-            respuesta = await client_http.post(url, headers=headers, json=payload)
-            if respuesta.status_code != 200:
-                print(f"⚠️ Error enviando mensaje a WhatsApp: {respuesta.status_code} - {respuesta.text}")
-            return respuesta
-    except Exception as e:
-        print(f"⚠️ Excepción enviando mensaje a WhatsApp: {type(e).__name__}: {e}")
-        return None
+    respuesta = await post_con_reintentos(url, headers, payload)
+    if respuesta is not None and respuesta.status_code != 200:
+        print(f"⚠️ Error enviando mensaje a WhatsApp: {respuesta.status_code} - {respuesta.text}")
+    return respuesta
 
 def formatear_confirmacion(datos: dict) -> str:
     if datos.get("categoria") == "Error":
