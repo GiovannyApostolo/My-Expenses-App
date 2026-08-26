@@ -17,7 +17,7 @@ app = FastAPI()
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
-SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 ZONA_HORARIA = ZoneInfo("Europe/Madrid")
