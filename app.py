@@ -15,7 +15,7 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # Configuramos Gemini para que solo devuelva JSON
 modelo_ia = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
+    model_name="gemini-1.5-flash-latest",
     generation_config={"response_mime_type": "application/json"}
 )
 
