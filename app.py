@@ -4,19 +4,20 @@ import io
 import httpx
 from fastapi import FastAPI, Request, HTTPException
 from PIL import Image
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 app = FastAPI()
 
 # --- 1. CONFIGURACIÓN Y VARIABLES DE ENTORNO (De Render) ---
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-# Configuramos Gemini para que solo devuelva JSON
-modelo_ia = genai.GenerativeModel(
-    model_name="gemini-3.7-flash",
-    generation_config={"response_mime_type": "application/json"}
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+MODELO = "gemini-3.7-flash"
+
+GENERATION_CONFIG = types.GenerateContentConfig(
+    response_mime_type="application/json"
 )
 
 # --- 2. FUNCIONES DE INTELIGENCIA ARTIFICIAL ---
@@ -28,21 +29,25 @@ async def procesar_gasto_con_ia(texto_usuario: str):
     """
     contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
     try:
-        respuesta = modelo_ia.generate_content(contenido)
+        respuesta = client.models.generate_content(
+            model=MODELO,
+            contents=contenido,
+            config=GENERATION_CONFIG,
+        )
         return json.loads(respuesta.text)
     except Exception as e:
-        print(f"Error IA: {e}")
+        print(f"Error IA: {type(e).__name__}: {e}")
         return {"monto": 0.0, "categoria": "Error", "descripcion": "Error procesando"}
 
 async def descargar_imagen_whatsapp(media_id: str) -> Image.Image:
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient() as client_http:
         url_metadata = f"https://graph.facebook.com/v20.0/{media_id}"
-        respuesta_meta = await client.get(url_metadata, headers=headers)
+        respuesta_meta = await client_http.get(url_metadata, headers=headers)
         url_descarga = respuesta_meta.json().get("url")
         if not url_descarga:
             raise Exception("Sin URL de descarga")
-        respuesta_imagen = await client.get(url_descarga, headers=headers)
+        respuesta_imagen = await client_http.get(url_descarga, headers=headers)
         return Image.open(io.BytesIO(respuesta_imagen.content))
 
 async def procesar_recibo_con_ia(imagen: Image.Image):
@@ -52,10 +57,14 @@ async def procesar_recibo_con_ia(imagen: Image.Image):
     Devuelve SOLO un JSON: {"monto": 0.0, "categoria": "Categoría", "descripcion": "Nombre comercio"}
     """
     try:
-        respuesta = modelo_ia.generate_content([prompt_sistema, imagen])
+        respuesta = client.models.generate_content(
+            model=MODELO,
+            contents=[prompt_sistema, imagen],
+            config=GENERATION_CONFIG,
+        )
         return json.loads(respuesta.text)
     except Exception as e:
-        print(f"Error IA imagen: {e}")
+        print(f"Error IA imagen: {type(e).__name__}: {e}")
         return {"monto": 0.0, "categoria": "Error", "descripcion": "Error leyendo recibo"}
 
 # --- 3. RUTAS DEL WEBHOOK ---
@@ -73,30 +82,30 @@ async def verify_webhook(request: Request):
 @app.post("/webhook")
 async def receive_message(request: Request):
     body = await request.json()
-    
+
     if body.get("object") == "whatsapp_business_account":
         try:
             entry = body["entry"][0]
             changes = entry["changes"][0]
             value = changes["value"]
-            
+
             if "messages" in value:
                 message = value["messages"][0]
-                
+
                 # Procesar mensajes de texto
                 if message["type"] == "text":
                     texto = message["text"]["body"]
                     datos = await procesar_gasto_con_ia(texto)
                     print(f"✅ Gasto registrado (Texto): {datos}")
-                    
+
                 # Procesar fotos de recibos
                 elif message["type"] == "image":
                     media_id = message["image"]["id"]
                     imagen = await descargar_imagen_whatsapp(media_id)
                     datos = await procesar_recibo_con_ia(imagen)
                     print(f"✅ Gasto registrado (Foto): {datos}")
-                    
+
         except (KeyError, IndexError):
-            pass 
-            
+            pass
+
     return {"status": "ok"}
