@@ -81,11 +81,15 @@ async def enviar_mensaje_whatsapp(numero_destino: str, texto: str):
         "type": "text",
         "text": {"body": texto},
     }
-    async with httpx.AsyncClient() as client_http:
-        respuesta = await client_http.post(url, headers=headers, json=payload)
-        if respuesta.status_code != 200:
-            print(f"⚠️ Error enviando mensaje a WhatsApp: {respuesta.status_code} - {respuesta.text}")
-        return respuesta
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client_http:
+            respuesta = await client_http.post(url, headers=headers, json=payload)
+            if respuesta.status_code != 200:
+                print(f"⚠️ Error enviando mensaje a WhatsApp: {respuesta.status_code} - {respuesta.text}")
+            return respuesta
+    except Exception as e:
+        print(f"⚠️ Excepción enviando mensaje a WhatsApp: {type(e).__name__}: {e}")
+        return None
 
 def formatear_confirmacion(datos: dict) -> str:
     if datos.get("categoria") == "Error":
@@ -123,20 +127,23 @@ async def receive_message(request: Request):
                 message = value["messages"][0]
                 numero_remitente = message["from"]
 
-                # Procesar mensajes de texto
-                if message["type"] == "text":
-                    texto = message["text"]["body"]
-                    datos = await procesar_gasto_con_ia(texto)
-                    print(f"✅ Gasto registrado (Texto): {datos}")
-                    await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
+                try:
+                    # Procesar mensajes de texto
+                    if message["type"] == "text":
+                        texto = message["text"]["body"]
+                        datos = await procesar_gasto_con_ia(texto)
+                        print(f"✅ Gasto registrado (Texto): {datos}")
+                        await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
 
-                # Procesar fotos de recibos
-                elif message["type"] == "image":
-                    media_id = message["image"]["id"]
-                    imagen = await descargar_imagen_whatsapp(media_id)
-                    datos = await procesar_recibo_con_ia(imagen)
-                    print(f"✅ Gasto registrado (Foto): {datos}")
-                    await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
+                    # Procesar fotos de recibos
+                    elif message["type"] == "image":
+                        media_id = message["image"]["id"]
+                        imagen = await descargar_imagen_whatsapp(media_id)
+                        datos = await procesar_recibo_con_ia(imagen)
+                        print(f"✅ Gasto registrado (Foto): {datos}")
+                        await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
+                except Exception as e:
+                    print(f"⚠️ Error procesando/respondiendo mensaje: {type(e).__name__}: {e}")
 
         except (KeyError, IndexError) as e:
             print(f"⚠️ Error parseando webhook: {e}")
