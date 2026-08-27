@@ -350,29 +350,56 @@ def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
 
     return "\n".join(lineas)
 
-# --- EXPORTAR CSV ---
+# --- EXPORTAR EXCEL ---
 PALABRAS_EXPORTAR = ["exportar", "exporta"]
 
 def detectar_solicitud_exportar(texto: str) -> bool:
     texto_norm = normalizar(texto)
     return any(p in texto_norm for p in PALABRAS_EXPORTAR)
 
-def generar_csv_gastos(gastos: list) -> bytes:
-    lineas = ["Fecha,Categoría,Monto,Descripción"]
+def generar_excel_gastos(gastos: list) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Gastos"
+
+    encabezados = ["Fecha", "Categoría", "Monto", "Descripción"]
+    ws.append(encabezados)
+    fuente_encabezado = Font(bold=True, color="FFFFFF")
+    relleno_encabezado = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    for col_num, _ in enumerate(encabezados, start=1):
+        celda = ws.cell(row=1, column=col_num)
+        celda.font = fuente_encabezado
+        celda.fill = relleno_encabezado
+        celda.alignment = Alignment(horizontal="center")
+
+    total = 0.0
     for g in gastos:
-        fecha_str = ""
         try:
             fecha_str = datetime.fromisoformat(g["fecha"]).astimezone(ZONA_HORARIA).strftime("%Y-%m-%d %H:%M")
         except Exception:
             fecha_str = g.get("fecha", "")
-        categoria = str(g.get("categoria", "")).replace(",", ";")
-        descripcion = str(g.get("descripcion", "")).replace(",", ";").replace("\n", " ")
-        monto = g.get("monto", 0)
-        lineas.append(f"{fecha_str},{categoria},{monto},{descripcion}")
-    # utf-8-sig para que Excel detecte bien los acentos al abrir el archivo
-    return ("\n".join(lineas)).encode("utf-8-sig")
+        monto = float(g.get("monto", 0))
+        total += monto
+        ws.append([fecha_str, g.get("categoria", ""), monto, g.get("descripcion", "")])
 
-async def subir_documento_whatsapp(contenido: bytes, filename: str, mime_type: str = "text/csv", intentos: int = 3):
+    fila_total = ws.max_row + 1
+    ws.cell(row=fila_total, column=1, value="TOTAL").font = Font(bold=True)
+    celda_total = ws.cell(row=fila_total, column=3, value=total)
+    celda_total.font = Font(bold=True)
+
+    anchos = [18, 20, 12, 35]
+    for i, ancho in enumerate(anchos, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = ancho
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+async def subir_documento_whatsapp(contenido: bytes, filename: str, mime_type: str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", intentos: int = 3):
     url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/media"
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
     data = {"messaging_product": "whatsapp"}
@@ -456,10 +483,10 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 if not gastos:
                     await enviar_mensaje_whatsapp(numero_remitente, f"No tienes gastos registrados {ETIQUETAS_PERIODO.get(periodo_exp, 'en ese período')} para exportar.")
                 else:
-                    contenido_csv = generar_csv_gastos(gastos)
+                    contenido_excel = generar_excel_gastos(gastos)
                     fecha_archivo = datetime.now(ZONA_HORARIA).strftime("%Y%m%d")
-                    nombre_archivo = f"gastos_{periodo_exp}_{fecha_archivo}.csv"
-                    media_id = await subir_documento_whatsapp(contenido_csv, nombre_archivo)
+                    nombre_archivo = f"gastos_{periodo_exp}_{fecha_archivo}.xlsx"
+                    media_id = await subir_documento_whatsapp(contenido_excel, nombre_archivo)
                     if media_id:
                         caption = f"📤 Gastos {ETIQUETAS_PERIODO.get(periodo_exp, '')} ({len(gastos)} registros)"
                         await enviar_documento_whatsapp(numero_remitente, media_id, nombre_archivo, caption)
