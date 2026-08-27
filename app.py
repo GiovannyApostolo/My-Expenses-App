@@ -224,6 +224,19 @@ def detectar_periodo_informe(texto: str):
             return periodo
     return None
 
+PALABRAS_PORCENTAJE = ["porcentaje", "%", "que parte de mis gastos", "que fraccion"]
+
+def detectar_solicitud_porcentaje(texto: str) -> bool:
+    texto_norm = normalizar(texto)
+    return any(p in texto_norm for p in PALABRAS_PORCENTAJE)
+
+def detectar_periodo_generico(texto: str, default: str = "mensual") -> str:
+    texto_norm = normalizar(texto)
+    for periodo, palabras_clave in PERIODOS.items():
+        if any(palabra in texto_norm for palabra in palabras_clave):
+            return periodo
+    return default
+
 def detectar_categoria_informe(texto: str):
     texto_norm = normalizar(texto)
     # Alias más largos primero, para que "vivienda" no se coma casos más específicos, etc.
@@ -249,6 +262,13 @@ def calcular_rango_fechas(periodo: str):
 
     hasta = ahora + timedelta(minutes=1)  # incluir el momento actual
     return desde, hasta
+
+ETIQUETAS_PERIODO = {
+    "diario": "hoy",
+    "semanal": "esta semana",
+    "mensual": "este mes",
+    "anual": "este año",
+}
 
 def generar_texto_informe(periodo: str, gastos: list, categoria: str = None):
     etiquetas = {
@@ -290,7 +310,36 @@ def generar_texto_informe(periodo: str, gastos: list, categoria: str = None):
 
     return "\n".join(lineas)
 
-# --- 5. ENVÍO DE RESPUESTA A WHATSAPP ---
+def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
+    etiqueta_periodo = ETIQUETAS_PERIODO.get(periodo, "en el período")
+
+    if not gastos:
+        return f"📊 No tienes gastos registrados {etiqueta_periodo}. 🎉"
+
+    total = sum(float(g["monto"]) for g in gastos)
+    if total == 0:
+        return f"📊 No tienes gastos registrados {etiqueta_periodo}. 🎉"
+
+    if categoria:
+        monto_categoria = sum(float(g["monto"]) for g in gastos if g.get("categoria") == categoria)
+        porcentaje = (monto_categoria / total) * 100
+        return (
+            f"📊 {categoria} representa el {porcentaje:.1f}% de tus gastos {etiqueta_periodo}\n"
+            f"({monto_categoria:.2f} de {total:.2f} en total)"
+        )
+
+    # Sin categoría específica: desglose de porcentaje por cada categoría
+    por_categoria = {}
+    for g in gastos:
+        cat = g.get("categoria", "Otros")
+        por_categoria[cat] = por_categoria.get(cat, 0.0) + float(g["monto"])
+
+    lineas = [f"📊 Distribución de gastos {etiqueta_periodo}", "", f"💰 Total: {total:.2f}", ""]
+    for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
+        porcentaje = (monto / total) * 100
+        lineas.append(f"  🏷️ {cat}: {porcentaje:.1f}% ({monto:.2f})")
+
+    return "\n".join(lineas)
 async def enviar_mensaje_whatsapp(numero_destino: str, texto: str):
     url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
     headers = {
@@ -334,6 +383,15 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 informe = generar_texto_informe(periodo, gastos, categoria)
                 print(f"📊 Informe {periodo}{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
                 await enviar_mensaje_whatsapp(numero_remitente, informe)
+            elif detectar_solicitud_porcentaje(texto):
+                # El usuario pidió un porcentaje (ej. "qué % de mis gastos es ocio")
+                categoria = detectar_categoria_informe(texto)
+                periodo_pct = detectar_periodo_generico(texto, default="mensual")
+                desde, hasta = calcular_rango_fechas(periodo_pct)
+                gastos = await obtener_gastos(numero_remitente, desde, hasta)  # sin filtro: necesitamos el total
+                mensaje_pct = generar_texto_porcentaje(periodo_pct, gastos, categoria)
+                print(f"📊 Porcentaje {periodo_pct}{' / ' + categoria if categoria else ''} generado para {numero_remitente}")
+                await enviar_mensaje_whatsapp(numero_remitente, mensaje_pct)
             else:
                 # Es un gasto normal
                 datos = await procesar_gasto_con_ia(texto)
