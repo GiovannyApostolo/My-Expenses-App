@@ -40,7 +40,7 @@ ZONA_HORARIA = ZoneInfo("Europe/Madrid")
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 MODELO = "gemini-3.7-flash"
-MODELO_RESPALDO = "gemini-2.5-flash"
+MODELO_RESPALDO = "gemini-3.6-flash"
 
 CATEGORIAS = [
     "Restaurantes",
