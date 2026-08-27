@@ -62,6 +62,27 @@ async def request_con_reintentos(metodo, url, headers, json_payload=None, params
     return None
 
 # --- 2. FUNCIONES DE INTELIGENCIA ARTIFICIAL ---
+async def generar_con_reintentos(contenido, intentos=3):
+    ultimo_error = None
+    for intento in range(1, intentos + 1):
+        try:
+            respuesta = client.models.generate_content(
+                model=MODELO,
+                contents=contenido,
+                config=GENERATION_CONFIG,
+            )
+            return json.loads(respuesta.text)
+        except Exception as e:
+            ultimo_error = e
+            es_saturacion = "503" in str(e) or "UNAVAILABLE" in str(e) or "429" in str(e)
+            if es_saturacion and intento < intentos:
+                print(f"⏳ Gemini saturado, intento {intento}/{intentos}, reintentando...")
+                await asyncio.sleep(3 * intento)
+                continue
+            break
+    print(f"Error IA: {type(ultimo_error).__name__}: {ultimo_error}")
+    return {"monto": 0.0, "categoria": "Error", "descripcion": "Error procesando"}
+
 async def procesar_gasto_con_ia(texto_usuario: str):
     prompt_sistema = """
     Eres un asistente financiero estricto. Analiza el mensaje y extrae los datos del gasto.
@@ -69,16 +90,7 @@ async def procesar_gasto_con_ia(texto_usuario: str):
     Devuelve un JSON con esta estructura exacta: {"monto": 0.0, "categoria": "Categoría", "descripcion": "Descripción breve"}
     """
     contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
-    try:
-        respuesta = client.models.generate_content(
-            model=MODELO,
-            contents=contenido,
-            config=GENERATION_CONFIG,
-        )
-        return json.loads(respuesta.text)
-    except Exception as e:
-        print(f"Error IA: {type(e).__name__}: {e}")
-        return {"monto": 0.0, "categoria": "Error", "descripcion": "Error procesando"}
+    return await generar_con_reintentos(contenido)
 
 async def descargar_imagen_whatsapp(media_id: str) -> Image.Image:
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
@@ -97,16 +109,7 @@ async def procesar_recibo_con_ia(imagen: Image.Image):
     Categorías: [Comida, Transporte, Ocio, Servicios, Compras, Supermercado].
     Devuelve SOLO un JSON: {"monto": 0.0, "categoria": "Categoría", "descripcion": "Nombre comercio"}
     """
-    try:
-        respuesta = client.models.generate_content(
-            model=MODELO,
-            contents=[prompt_sistema, imagen],
-            config=GENERATION_CONFIG,
-        )
-        return json.loads(respuesta.text)
-    except Exception as e:
-        print(f"Error IA imagen: {type(e).__name__}: {e}")
-        return {"monto": 0.0, "categoria": "Error", "descripcion": "Error leyendo recibo"}
+    return await generar_con_reintentos([prompt_sistema, imagen])
 
 # --- 3. BASE DE DATOS (SUPABASE) ---
 async def guardar_gasto(numero: str, datos: dict):
