@@ -41,6 +41,20 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 MODELO = "gemini-3.7-flash"
 MODELO_RESPALDO = "gemini-2.5-flash"
 
+CATEGORIAS = [
+    "Restaurantes",
+    "Supermercado",
+    "Transporte",
+    "Ocio",
+    "Vivienda y servicios",
+    "Compras",
+    "Salud",
+    "Educación",
+    "Finanzas",
+    "Otros",
+]
+CATEGORIAS_TEXTO = ", ".join(CATEGORIAS)
+
 GENERATION_CONFIG = types.GenerateContentConfig(
     response_mime_type="application/json"
 )
@@ -92,10 +106,10 @@ async def generar_con_reintentos(contenido, intentos=3):
     return {"monto": 0.0, "categoria": "Error", "descripcion": "Error procesando"}
 
 async def procesar_gasto_con_ia(texto_usuario: str):
-    prompt_sistema = """
+    prompt_sistema = f"""
     Eres un asistente financiero estricto. Analiza el mensaje y extrae los datos del gasto.
-    Categorías permitidas: [Comida, Transporte, Ocio, Servicios, Compras, Supermercado].
-    Devuelve un JSON con esta estructura exacta: {"monto": 0.0, "categoria": "Categoría", "descripcion": "Descripción breve"}
+    Categorías permitidas: [{CATEGORIAS_TEXTO}].
+    Devuelve un JSON con esta estructura exacta: {{"monto": 0.0, "categoria": "Categoría", "descripcion": "Descripción breve"}}
     """
     contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
     return await generar_con_reintentos(contenido)
@@ -112,10 +126,10 @@ async def descargar_imagen_whatsapp(media_id: str) -> Image.Image:
         return Image.open(io.BytesIO(respuesta_imagen.content))
 
 async def procesar_recibo_con_ia(imagen: Image.Image):
-    prompt_sistema = """
+    prompt_sistema = f"""
     Eres un asistente financiero. Extrae el total gastado de esta imagen.
-    Categorías: [Comida, Transporte, Ocio, Servicios, Compras, Supermercado].
-    Devuelve SOLO un JSON: {"monto": 0.0, "categoria": "Categoría", "descripcion": "Nombre comercio"}
+    Categorías: [{CATEGORIAS_TEXTO}].
+    Devuelve SOLO un JSON: {{"monto": 0.0, "categoria": "Categoría", "descripcion": "Nombre comercio"}}
     """
     return await generar_con_reintentos([prompt_sistema, imagen])
 
