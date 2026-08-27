@@ -47,6 +47,7 @@ CATEGORIAS = [
     "Supermercado",
     "Transporte",
     "Ocio",
+    "Suscripciones",
     "Vivienda y servicios",
     "Compras",
     "Salud",
@@ -55,6 +56,13 @@ CATEGORIAS = [
     "Otros",
 ]
 CATEGORIAS_TEXTO = ", ".join(CATEGORIAS)
+ACLARACION_CATEGORIAS = (
+    "Distingue bien entre 'Ocio' y 'Suscripciones': 'Ocio' es entretenimiento puntual o "
+    "streaming de consumo (Netflix, Spotify, cine, conciertos, videojuegos, salidas). "
+    "'Suscripciones' es para herramientas, software o servicios digitales recurrentes que "
+    "NO son de entretenimiento (Google Cloud, iCloud/Apple Cloud, Suno, ChatGPT Plus, "
+    "hosting, dominios, apps de productividad, etc.)."
+)
 
 GENERATION_CONFIG = types.GenerateContentConfig(
     response_mime_type="application/json"
@@ -110,6 +118,7 @@ async def procesar_gasto_con_ia(texto_usuario: str):
     prompt_sistema = f"""
     Eres un asistente financiero estricto. Analiza el mensaje y extrae los datos del gasto.
     Categorías permitidas: [{CATEGORIAS_TEXTO}].
+    {ACLARACION_CATEGORIAS}
     Devuelve un JSON con esta estructura exacta: {{"monto": 0.0, "categoria": "Categoría", "descripcion": "Descripción breve"}}
     """
     contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
@@ -130,6 +139,7 @@ async def procesar_recibo_con_ia(imagen: Image.Image):
     prompt_sistema = f"""
     Eres un asistente financiero. Extrae el total gastado de esta imagen.
     Categorías: [{CATEGORIAS_TEXTO}].
+    {ACLARACION_CATEGORIAS}
     Devuelve SOLO un JSON: {{"monto": 0.0, "categoria": "Categoría", "descripcion": "Nombre comercio"}}
     """
     return await generar_con_reintentos([prompt_sistema, imagen])
@@ -196,6 +206,7 @@ ALIASES_CATEGORIA = {
     "supermercado": "Supermercado", "super": "Supermercado",
     "transporte": "Transporte",
     "ocio": "Ocio",
+    "suscripciones": "Suscripciones", "suscripcion": "Suscripciones", "subscripciones": "Suscripciones", "subscripcion": "Suscripciones",
     "vivienda": "Vivienda y servicios", "servicios": "Vivienda y servicios", "alquiler": "Vivienda y servicios",
     "compras": "Compras",
     "salud": "Salud",
