@@ -197,6 +197,7 @@ PERIODOS = {
     "diario": ["diario", "diarios", "de hoy", "hoy"],
     "semanal": ["semanal", "semanales", "semana"],
     "mensual": ["mensual", "mensuales", "mes"],
+    "trimestral": ["trimestral", "trimestrales", "trimestre"],
     "anual": ["anual", "anuales", "ano"],
 }
 
@@ -215,12 +216,15 @@ ALIASES_CATEGORIA = {
     "otros": "Otros",
 }
 
+def _coincide_periodo(texto_norm: str, palabras_clave: list) -> bool:
+    return any(re.search(rf"\b{re.escape(p)}\b", texto_norm) for p in palabras_clave)
+
 def detectar_periodo_informe(texto: str):
     texto_norm = normalizar(texto)
     if not any(p in texto_norm for p in PALABRAS_INFORME):
         return None
     for periodo, palabras_clave in PERIODOS.items():
-        if any(palabra in texto_norm for palabra in palabras_clave):
+        if _coincide_periodo(texto_norm, palabras_clave):
             return periodo
     return None
 
@@ -233,7 +237,7 @@ def detectar_solicitud_porcentaje(texto: str) -> bool:
 def detectar_periodo_generico(texto: str, default: str = "mensual") -> str:
     texto_norm = normalizar(texto)
     for periodo, palabras_clave in PERIODOS.items():
-        if any(palabra in texto_norm for palabra in palabras_clave):
+        if _coincide_periodo(texto_norm, palabras_clave):
             return periodo
     return default
 
@@ -255,6 +259,9 @@ def calcular_rango_fechas(periodo: str):
         desde = hoy_inicio - timedelta(days=hoy_inicio.weekday())  # lunes de esta semana
     elif periodo == "mensual":
         desde = hoy_inicio.replace(day=1)
+    elif periodo == "trimestral":
+        mes_inicio_trimestre = ((ahora.month - 1) // 3) * 3 + 1
+        desde = hoy_inicio.replace(month=mes_inicio_trimestre, day=1)
     elif periodo == "anual":
         desde = hoy_inicio.replace(month=1, day=1)
     else:
@@ -267,6 +274,7 @@ ETIQUETAS_PERIODO = {
     "diario": "hoy",
     "semanal": "esta semana",
     "mensual": "este mes",
+    "trimestral": "este trimestre",
     "anual": "este año",
 }
 
@@ -275,6 +283,7 @@ def generar_texto_informe(periodo: str, gastos: list, categoria: str = None):
         "diario": "📅 Resumen diario",
         "semanal": "📅 Resumen semanal",
         "mensual": "📅 Resumen mensual",
+        "trimestral": "📅 Resumen trimestral",
         "anual": "📅 Resumen anual",
     }
     titulo = etiquetas.get(periodo, "📅 Resumen")
@@ -340,6 +349,67 @@ def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
         lineas.append(f"  🏷️ {cat}: {porcentaje:.1f}% ({monto:.2f})")
 
     return "\n".join(lineas)
+
+# --- EXPORTAR CSV ---
+PALABRAS_EXPORTAR = ["exportar", "exporta"]
+
+def detectar_solicitud_exportar(texto: str) -> bool:
+    texto_norm = normalizar(texto)
+    return any(p in texto_norm for p in PALABRAS_EXPORTAR)
+
+def generar_csv_gastos(gastos: list) -> bytes:
+    lineas = ["Fecha,Categoría,Monto,Descripción"]
+    for g in gastos:
+        fecha_str = ""
+        try:
+            fecha_str = datetime.fromisoformat(g["fecha"]).astimezone(ZONA_HORARIA).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            fecha_str = g.get("fecha", "")
+        categoria = str(g.get("categoria", "")).replace(",", ";")
+        descripcion = str(g.get("descripcion", "")).replace(",", ";").replace("\n", " ")
+        monto = g.get("monto", 0)
+        lineas.append(f"{fecha_str},{categoria},{monto},{descripcion}")
+    # utf-8-sig para que Excel detecte bien los acentos al abrir el archivo
+    return ("\n".join(lineas)).encode("utf-8-sig")
+
+async def subir_documento_whatsapp(contenido: bytes, filename: str, mime_type: str = "text/csv", intentos: int = 3):
+    url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/media"
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+    data = {"messaging_product": "whatsapp"}
+    ultimo_error = None
+    for intento in range(1, intentos + 1):
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client_http:
+                files = {"file": (filename, contenido, mime_type)}
+                respuesta = await client_http.post(url, headers=headers, data=data, files=files)
+                if respuesta.status_code == 200:
+                    return respuesta.json().get("id")
+                print(f"⚠️ Error subiendo documento a WhatsApp: {respuesta.status_code} - {respuesta.text}")
+                return None
+        except (httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadTimeout) as e:
+            ultimo_error = e
+            print(f"⏳ Intento {intento}/{intentos} falló subiendo documento ({type(e).__name__}), reintentando...")
+            await asyncio.sleep(2 * intento)
+    print(f"⚠️ Todos los intentos fallaron subiendo documento: {type(ultimo_error).__name__}: {ultimo_error}")
+    return None
+
+async def enviar_documento_whatsapp(numero_destino: str, media_id: str, filename: str, caption: str = ""):
+    url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": numero_destino,
+        "type": "document",
+        "document": {"id": media_id, "filename": filename, "caption": caption},
+    }
+    respuesta = await request_con_reintentos("POST", url, headers, json_payload=payload)
+    if respuesta is not None and respuesta.status_code != 200:
+        print(f"⚠️ Error enviando documento a WhatsApp: {respuesta.status_code} - {respuesta.text}")
+    return respuesta
+
 async def enviar_mensaje_whatsapp(numero_destino: str, texto: str):
     url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
     headers = {
@@ -375,7 +445,27 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
             texto = message["text"]["body"]
             periodo = detectar_periodo_informe(texto)
 
-            if periodo:
+            if detectar_solicitud_exportar(texto):
+                # El usuario pidió exportar un CSV (ej. "exportar trimestre")
+                categoria = detectar_categoria_informe(texto)
+                periodo_exp = detectar_periodo_generico(texto, default="mensual")
+                desde, hasta = calcular_rango_fechas(periodo_exp)
+                gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
+                print(f"📤 Exportación {periodo_exp}{' / ' + categoria if categoria else ''} solicitada por {numero_remitente} ({len(gastos)} gastos)")
+
+                if not gastos:
+                    await enviar_mensaje_whatsapp(numero_remitente, f"No tienes gastos registrados {ETIQUETAS_PERIODO.get(periodo_exp, 'en ese período')} para exportar.")
+                else:
+                    contenido_csv = generar_csv_gastos(gastos)
+                    fecha_archivo = datetime.now(ZONA_HORARIA).strftime("%Y%m%d")
+                    nombre_archivo = f"gastos_{periodo_exp}_{fecha_archivo}.csv"
+                    media_id = await subir_documento_whatsapp(contenido_csv, nombre_archivo)
+                    if media_id:
+                        caption = f"📤 Gastos {ETIQUETAS_PERIODO.get(periodo_exp, '')} ({len(gastos)} registros)"
+                        await enviar_documento_whatsapp(numero_remitente, media_id, nombre_archivo, caption)
+                    else:
+                        await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No pude generar el archivo de exportación. Intenta de nuevo en un momento.")
+            elif periodo:
                 # El usuario pidió un resumen/informe (opcionalmente filtrado por categoría)
                 categoria = detectar_categoria_informe(texto)
                 desde, hasta = calcular_rango_fechas(periodo)
