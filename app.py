@@ -39,6 +39,7 @@ ZONA_HORARIA = ZoneInfo("Europe/Madrid")
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 MODELO = "gemini-3.7-flash"
+MODELO_RESPALDO = "gemini-2.5-flash"
 
 GENERATION_CONFIG = types.GenerateContentConfig(
     response_mime_type="application/json"
@@ -64,22 +65,29 @@ async def request_con_reintentos(metodo, url, headers, json_payload=None, params
 # --- 2. FUNCIONES DE INTELIGENCIA ARTIFICIAL ---
 async def generar_con_reintentos(contenido, intentos=3):
     ultimo_error = None
-    for intento in range(1, intentos + 1):
-        try:
-            respuesta = client.models.generate_content(
-                model=MODELO,
-                contents=contenido,
-                config=GENERATION_CONFIG,
-            )
-            return json.loads(respuesta.text)
-        except Exception as e:
-            ultimo_error = e
-            es_saturacion = "503" in str(e) or "UNAVAILABLE" in str(e) or "429" in str(e)
-            if es_saturacion and intento < intentos:
-                print(f"⏳ Gemini saturado, intento {intento}/{intentos}, reintentando...")
-                await asyncio.sleep(3 * intento)
-                continue
-            break
+    for modelo_actual in (MODELO, MODELO_RESPALDO):
+        for intento in range(1, intentos + 1):
+            try:
+                respuesta = client.models.generate_content(
+                    model=modelo_actual,
+                    contents=contenido,
+                    config=GENERATION_CONFIG,
+                )
+                return json.loads(respuesta.text)
+            except Exception as e:
+                ultimo_error = e
+                es_saturacion = "503" in str(e) or "UNAVAILABLE" in str(e) or "429" in str(e)
+                if es_saturacion and intento < intentos:
+                    print(f"⏳ {modelo_actual} saturado, intento {intento}/{intentos}, reintentando...")
+                    await asyncio.sleep(3 * intento)
+                    continue
+                break
+        es_saturacion_final = "503" in str(ultimo_error) or "UNAVAILABLE" in str(ultimo_error)
+        if modelo_actual == MODELO and es_saturacion_final:
+            print(f"🔄 {MODELO} saturado tras {intentos} intentos, probando modelo de respaldo {MODELO_RESPALDO}...")
+            continue
+        break
+
     print(f"Error IA: {type(ultimo_error).__name__}: {ultimo_error}")
     return {"monto": 0.0, "categoria": "Error", "descripcion": "Error procesando"}
 
