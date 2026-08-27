@@ -4,3 +4,4 @@ httpx
 pillow
 google-genai
 tzdata
+openpyxl
