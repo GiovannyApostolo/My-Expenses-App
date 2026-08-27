@@ -3,6 +3,7 @@ import json
 import io
 import re
 import asyncio
+import unicodedata
 import httpx
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -154,7 +155,7 @@ async def guardar_gasto(numero: str, datos: dict):
         texto = respuesta.text if respuesta else ""
         print(f"⚠️ Error guardando gasto en Supabase: {codigo} - {texto}")
 
-async def obtener_gastos(numero: str, desde: datetime, hasta: datetime):
+async def obtener_gastos(numero: str, desde: datetime, hasta: datetime, categoria: str = None):
     url = f"{SUPABASE_URL}/rest/v1/gastos"
     headers = {
         "apikey": SUPABASE_KEY,
@@ -166,6 +167,8 @@ async def obtener_gastos(numero: str, desde: datetime, hasta: datetime):
         "select": "monto,categoria,descripcion,fecha",
         "order": "fecha.asc",
     }
+    if categoria:
+        params["categoria"] = f"eq.{categoria}"
     respuesta = await request_con_reintentos("GET", url, headers, params=params)
     if respuesta is None or respuesta.status_code != 200:
         codigo = respuesta.status_code if respuesta else "sin respuesta"
@@ -174,21 +177,48 @@ async def obtener_gastos(numero: str, desde: datetime, hasta: datetime):
     return respuesta.json()
 
 # --- 4. DETECCIÓN Y GENERACIÓN DE INFORMES ---
-PALABRAS_INFORME = ["resumen", "informe", "reporte"]
+def normalizar(texto: str) -> str:
+    texto = texto.lower()
+    texto = "".join(c for c in unicodedata.normalize("NFD", texto) if unicodedata.category(c) != "Mn")
+    return texto
+
+PALABRAS_INFORME = ["resumen", "informe", "reporte", "detalle", "detallame", "detalla", "muestrame", "cuanto gaste", "cuanto he gastado"]
 PERIODOS = {
     "diario": ["diario", "diarios", "de hoy", "hoy"],
     "semanal": ["semanal", "semanales", "semana"],
     "mensual": ["mensual", "mensuales", "mes"],
-    "anual": ["anual", "anuales", "año", "ano"],
+    "anual": ["anual", "anuales", "ano"],
+}
+
+# Alias -> nombre exacto de categoría (debe coincidir con CATEGORIAS)
+ALIASES_CATEGORIA = {
+    "restaurantes": "Restaurantes", "restaurante": "Restaurantes",
+    "supermercado": "Supermercado", "super": "Supermercado",
+    "transporte": "Transporte",
+    "ocio": "Ocio",
+    "vivienda": "Vivienda y servicios", "servicios": "Vivienda y servicios", "alquiler": "Vivienda y servicios",
+    "compras": "Compras",
+    "salud": "Salud",
+    "educacion": "Educación",
+    "finanzas": "Finanzas",
+    "otros": "Otros",
 }
 
 def detectar_periodo_informe(texto: str):
-    texto_lower = texto.lower()
-    if not any(p in texto_lower for p in PALABRAS_INFORME):
+    texto_norm = normalizar(texto)
+    if not any(p in texto_norm for p in PALABRAS_INFORME):
         return None
     for periodo, palabras_clave in PERIODOS.items():
-        if any(palabra in texto_lower for palabra in palabras_clave):
+        if any(palabra in texto_norm for palabra in palabras_clave):
             return periodo
+    return None
+
+def detectar_categoria_informe(texto: str):
+    texto_norm = normalizar(texto)
+    # Alias más largos primero, para que "vivienda" no se coma casos más específicos, etc.
+    for alias in sorted(ALIASES_CATEGORIA.keys(), key=len, reverse=True):
+        if re.search(rf"\b{re.escape(alias)}\b", texto_norm):
+            return ALIASES_CATEGORIA[alias]
     return None
 
 def calcular_rango_fechas(periodo: str):
@@ -209,7 +239,7 @@ def calcular_rango_fechas(periodo: str):
     hasta = ahora + timedelta(minutes=1)  # incluir el momento actual
     return desde, hasta
 
-def generar_texto_informe(periodo: str, gastos: list):
+def generar_texto_informe(periodo: str, gastos: list, categoria: str = None):
     etiquetas = {
         "diario": "📅 Resumen diario",
         "semanal": "📅 Resumen semanal",
@@ -217,20 +247,25 @@ def generar_texto_informe(periodo: str, gastos: list):
         "anual": "📅 Resumen anual",
     }
     titulo = etiquetas.get(periodo, "📅 Resumen")
+    if categoria:
+        titulo += f" — 🏷️ {categoria}"
 
     if not gastos:
         return f"{titulo}\n\nNo tienes gastos registrados en este período. 🎉"
 
     total = sum(float(g["monto"]) for g in gastos)
 
-    por_categoria = {}
-    for g in gastos:
-        cat = g.get("categoria", "Otros")
-        por_categoria[cat] = por_categoria.get(cat, 0.0) + float(g["monto"])
+    lineas = [titulo, "", f"💰 Total: {total:.2f}"]
 
-    lineas = [titulo, "", f"💰 Total: {total:.2f}", "", "Por categoría:"]
-    for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
-        lineas.append(f"  🏷️ {cat}: {monto:.2f}")
+    if not categoria:
+        por_categoria = {}
+        for g in gastos:
+            cat = g.get("categoria", "Otros")
+            por_categoria[cat] = por_categoria.get(cat, 0.0) + float(g["monto"])
+        lineas.append("")
+        lineas.append("Por categoría:")
+        for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
+            lineas.append(f"  🏷️ {cat}: {monto:.2f}")
 
     lineas.append("")
     lineas.append(f"Detalle ({len(gastos)} gastos):")
@@ -281,11 +316,12 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
             periodo = detectar_periodo_informe(texto)
 
             if periodo:
-                # El usuario pidió un resumen/informe
+                # El usuario pidió un resumen/informe (opcionalmente filtrado por categoría)
+                categoria = detectar_categoria_informe(texto)
                 desde, hasta = calcular_rango_fechas(periodo)
-                gastos = await obtener_gastos(numero_remitente, desde, hasta)
-                informe = generar_texto_informe(periodo, gastos)
-                print(f"📊 Informe {periodo} generado para {numero_remitente} ({len(gastos)} gastos)")
+                gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
+                informe = generar_texto_informe(periodo, gastos, categoria)
+                print(f"📊 Informe {periodo}{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
                 await enviar_mensaje_whatsapp(numero_remitente, informe)
             else:
                 # Es un gasto normal
