@@ -124,6 +124,15 @@ async def procesar_gasto_con_ia(texto_usuario: str):
     contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
     return await generar_con_reintentos(contenido)
 
+async def procesar_ingreso_con_ia(texto_usuario: str):
+    prompt_sistema = """
+    Eres un asistente financiero. Analiza el mensaje y extrae los datos de un INGRESO de dinero
+    (sueldo, freelance, regalo, venta, etc.), no de un gasto.
+    Devuelve un JSON con esta estructura exacta: {"monto": 0.0, "descripcion": "Descripción breve"}
+    """
+    contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
+    return await generar_con_reintentos(contenido)
+
 async def descargar_imagen_whatsapp(media_id: str) -> Image.Image:
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
     async with httpx.AsyncClient() as client_http:
@@ -186,6 +195,44 @@ async def obtener_gastos(numero: str, desde: datetime, hasta: datetime, categori
         return []
     return respuesta.json()
 
+async def guardar_ingreso(numero: str, datos: dict):
+    url = f"{SUPABASE_URL}/rest/v1/ingresos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    payload = {
+        "numero": numero,
+        "monto": datos.get("monto", 0.0),
+        "descripcion": datos.get("descripcion", ""),
+    }
+    respuesta = await request_con_reintentos("POST", url, headers, json_payload=payload)
+    if respuesta is None or respuesta.status_code not in (200, 201):
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        texto = respuesta.text if respuesta else ""
+        print(f"⚠️ Error guardando ingreso en Supabase: {codigo} - {texto}")
+
+async def obtener_ingresos(numero: str, desde: datetime, hasta: datetime):
+    url = f"{SUPABASE_URL}/rest/v1/ingresos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+    }
+    params = {
+        "numero": f"eq.{numero}",
+        "fecha": [f"gte.{desde.isoformat()}", f"lt.{hasta.isoformat()}"],
+        "select": "monto,descripcion,fecha",
+        "order": "fecha.asc",
+    }
+    respuesta = await request_con_reintentos("GET", url, headers, params=params)
+    if respuesta is None or respuesta.status_code != 200:
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        print(f"⚠️ Error consultando ingresos en Supabase: {codigo}")
+        return []
+    return respuesta.json()
+
 # --- 4. DETECCIÓN Y GENERACIÓN DE INFORMES ---
 def normalizar(texto: str) -> str:
     texto = texto.lower()
@@ -240,6 +287,24 @@ def detectar_periodo_generico(texto: str, default: str = "mensual") -> str:
         if _coincide_periodo(texto_norm, palabras_clave):
             return periodo
     return default
+
+PALABRAS_REFERENCIA_INGRESOS = ["ingreso", "ingresos"]
+
+def detectar_referencia_ingresos(texto: str) -> bool:
+    texto_norm = normalizar(texto)
+    return any(re.search(rf"\b{p}\b", texto_norm) for p in PALABRAS_REFERENCIA_INGRESOS)
+
+PALABRAS_BALANCE = ["balance", "saldo", "cuanto me queda", "cuanto tengo disponible", "cuanto dinero me queda"]
+
+def detectar_solicitud_balance(texto: str) -> bool:
+    texto_norm = normalizar(texto)
+    return any(p in texto_norm for p in PALABRAS_BALANCE)
+
+PALABRAS_INGRESO = ["ingreso", "ingresos", "ingrese", "cobre", "recibi"]
+
+def detectar_solicitud_ingreso(texto: str) -> bool:
+    texto_norm = normalizar(texto)
+    return any(re.search(rf"\b{p}\b", texto_norm) for p in PALABRAS_INGRESO)
 
 def detectar_categoria_informe(texto: str):
     texto_norm = normalizar(texto)
@@ -349,6 +414,66 @@ def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
         lineas.append(f"  🏷️ {cat}: {porcentaje:.1f}% ({monto:.2f})")
 
     return "\n".join(lineas)
+
+def generar_texto_porcentaje_ingresos(periodo: str, gastos: list, total_ingresos: float, categoria: str = None):
+    etiqueta_periodo = ETIQUETAS_PERIODO.get(periodo, "en el período")
+
+    if total_ingresos <= 0:
+        return f"⚠️ No tienes ingresos registrados {etiqueta_periodo}, así que no puedo calcular el porcentaje sobre tus ingresos."
+
+    if categoria:
+        monto_categoria = sum(float(g["monto"]) for g in gastos if g.get("categoria") == categoria)
+        porcentaje = (monto_categoria / total_ingresos) * 100
+        return (
+            f"📊 {categoria} representa el {porcentaje:.1f}% de tus ingresos {etiqueta_periodo}\n"
+            f"({monto_categoria:.2f} de {total_ingresos:.2f} de ingresos)"
+        )
+
+    por_categoria = {}
+    for g in gastos:
+        cat = g.get("categoria", "Otros")
+        por_categoria[cat] = por_categoria.get(cat, 0.0) + float(g["monto"])
+
+    total_gastos = sum(por_categoria.values())
+    ahorro = total_ingresos - total_gastos
+
+    lineas = [f"📊 Gastos {etiqueta_periodo} sobre tus ingresos", "", f"💰 Ingresos: {total_ingresos:.2f}", ""]
+    for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
+        porcentaje = (monto / total_ingresos) * 100
+        lineas.append(f"  🏷️ {cat}: {porcentaje:.1f}% ({monto:.2f})")
+    porcentaje_ahorro = (ahorro / total_ingresos) * 100
+    lineas.append("")
+    lineas.append(f"  💾 Restante/Ahorro: {porcentaje_ahorro:.1f}% ({ahorro:.2f})")
+
+    return "\n".join(lineas)
+
+def generar_texto_balance(periodo: str, total_ingresos: float, total_gastos: float):
+    etiqueta_periodo = ETIQUETAS_PERIODO.get(periodo, "en el período")
+    balance = total_ingresos - total_gastos
+
+    lineas = [
+        f"💼 Balance {etiqueta_periodo}",
+        "",
+        f"💰 Ingresos: {total_ingresos:.2f}",
+        f"💸 Gastos: {total_gastos:.2f}",
+        f"🧮 Balance: {balance:.2f}",
+    ]
+    if total_ingresos > 0:
+        pct_gastado = (total_gastos / total_ingresos) * 100
+        lineas.append(f"📊 Has gastado el {pct_gastado:.1f}% de tus ingresos")
+    else:
+        lineas.append("ℹ️ No tienes ingresos registrados en este período.")
+
+    return "\n".join(lineas)
+
+def formatear_confirmacion_ingreso(datos: dict) -> str:
+    if not datos.get("monto"):
+        return "⚠️ No pude procesar ese ingreso. ¿Puedes intentar describirlo de otra forma?"
+    return (
+        f"✅ Ingreso registrado\n"
+        f"💰 Monto: {datos.get('monto')}\n"
+        f"📝 {datos.get('descripcion')}"
+    )
 
 # --- EXPORTAR EXCEL ---
 PALABRAS_EXPORTAR = ["exportar", "exporta"]
@@ -607,17 +732,56 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 desde, hasta = calcular_rango_fechas(periodo)
                 gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
                 informe = generar_texto_informe(periodo, gastos, categoria)
+
+                # Si no es un informe filtrado por categoría, añadimos ingresos/balance si existen
+                if not categoria:
+                    ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
+                    total_ingresos = sum(float(i["monto"]) for i in ingresos)
+                    if total_ingresos > 0:
+                        total_gastos = sum(float(g["monto"]) for g in gastos)
+                        balance = total_ingresos - total_gastos
+                        pct_gastado = (total_gastos / total_ingresos) * 100
+                        informe += (
+                            f"\n\n💼 Ingresos: {total_ingresos:.2f}"
+                            f"\n🧮 Balance: {balance:.2f} ({pct_gastado:.1f}% de tus ingresos gastado)"
+                        )
+
                 print(f"📊 Informe {periodo}{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
                 await enviar_mensaje_whatsapp(numero_remitente, informe)
             elif detectar_solicitud_porcentaje(texto):
-                # El usuario pidió un porcentaje (ej. "qué % de mis gastos es ocio")
+                # El usuario pidió un porcentaje (ej. "qué % de mis gastos/ingresos es ocio")
                 categoria = detectar_categoria_informe(texto)
                 periodo_pct = detectar_periodo_generico(texto, default="mensual")
                 desde, hasta = calcular_rango_fechas(periodo_pct)
                 gastos = await obtener_gastos(numero_remitente, desde, hasta)  # sin filtro: necesitamos el total
-                mensaje_pct = generar_texto_porcentaje(periodo_pct, gastos, categoria)
+
+                if detectar_referencia_ingresos(texto):
+                    ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
+                    total_ingresos = sum(float(i["monto"]) for i in ingresos)
+                    mensaje_pct = generar_texto_porcentaje_ingresos(periodo_pct, gastos, total_ingresos, categoria)
+                else:
+                    mensaje_pct = generar_texto_porcentaje(periodo_pct, gastos, categoria)
+
                 print(f"📊 Porcentaje {periodo_pct}{' / ' + categoria if categoria else ''} generado para {numero_remitente}")
                 await enviar_mensaje_whatsapp(numero_remitente, mensaje_pct)
+            elif detectar_solicitud_balance(texto):
+                # El usuario pidió su balance (ingresos - gastos)
+                periodo_bal = detectar_periodo_generico(texto, default="mensual")
+                desde, hasta = calcular_rango_fechas(periodo_bal)
+                gastos = await obtener_gastos(numero_remitente, desde, hasta)
+                ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
+                total_gastos = sum(float(g["monto"]) for g in gastos)
+                total_ingresos = sum(float(i["monto"]) for i in ingresos)
+                mensaje_balance = generar_texto_balance(periodo_bal, total_ingresos, total_gastos)
+                print(f"💼 Balance {periodo_bal} generado para {numero_remitente}")
+                await enviar_mensaje_whatsapp(numero_remitente, mensaje_balance)
+            elif detectar_solicitud_ingreso(texto):
+                # El usuario registró un ingreso (ej. "ingreso de 1500 sueldo")
+                datos_ingreso = await procesar_ingreso_con_ia(texto)
+                print(f"✅ Ingreso registrado: {datos_ingreso}")
+                if datos_ingreso.get("monto"):
+                    await guardar_ingreso(numero_remitente, datos_ingreso)
+                await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion_ingreso(datos_ingreso))
             else:
                 # Es un gasto normal
                 datos = await procesar_gasto_con_ia(texto)
