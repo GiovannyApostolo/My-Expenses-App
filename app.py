@@ -357,42 +357,153 @@ def detectar_solicitud_exportar(texto: str) -> bool:
     texto_norm = normalizar(texto)
     return any(p in texto_norm for p in PALABRAS_EXPORTAR)
 
+MESES_ES = {
+    1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
+    7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre",
+}
+MESES_ALIAS = {normalizar(nombre): num for num, nombre in MESES_ES.items()}
+
+def detectar_mes_especifico(texto: str):
+    texto_norm = normalizar(texto)
+    for nombre_norm, num in MESES_ALIAS.items():
+        if re.search(rf"\b{nombre_norm}\b", texto_norm):
+            return num
+    return None
+
+ORDINALES_TRIMESTRE = {"primer": 1, "primero": 1, "segundo": 2, "tercer": 3, "tercero": 3, "cuarto": 4}
+
+def detectar_trimestre_especifico(texto: str):
+    texto_norm = normalizar(texto)
+    m = re.search(r"\bq([1-4])\b", texto_norm)
+    if m:
+        return int(m.group(1))
+    m2 = re.search(r"\btrimestre\s*([1-4])\b", texto_norm)
+    if m2:
+        return int(m2.group(1))
+    for palabra, num in ORDINALES_TRIMESTRE.items():
+        if re.search(rf"\b{palabra}\b", texto_norm):
+            return num
+    return None
+
+def calcular_rango_mes(mes_num: int, anio: int = None):
+    anio = anio or datetime.now(ZONA_HORARIA).year
+    desde = datetime(anio, mes_num, 1, tzinfo=ZONA_HORARIA)
+    if mes_num == 12:
+        hasta = datetime(anio + 1, 1, 1, tzinfo=ZONA_HORARIA)
+    else:
+        hasta = datetime(anio, mes_num + 1, 1, tzinfo=ZONA_HORARIA)
+    ahora = datetime.now(ZONA_HORARIA)
+    if desde <= ahora < hasta:
+        hasta = ahora + timedelta(minutes=1)
+    return desde, hasta
+
+def calcular_rango_trimestre(trimestre_num: int, anio: int = None):
+    anio = anio or datetime.now(ZONA_HORARIA).year
+    mes_inicio = (trimestre_num - 1) * 3 + 1
+    desde = datetime(anio, mes_inicio, 1, tzinfo=ZONA_HORARIA)
+    mes_fin = mes_inicio + 3
+    if mes_fin > 12:
+        hasta = datetime(anio + 1, mes_fin - 12, 1, tzinfo=ZONA_HORARIA)
+    else:
+        hasta = datetime(anio, mes_fin, 1, tzinfo=ZONA_HORARIA)
+    ahora = datetime.now(ZONA_HORARIA)
+    if desde <= ahora < hasta:
+        hasta = ahora + timedelta(minutes=1)
+    return desde, hasta
+
+def preparar_exportacion(texto: str):
+    """Determina el rango de fechas y el nombre base del archivo según lo pedido en el mensaje."""
+    ahora = datetime.now(ZONA_HORARIA)
+    trimestre_especifico = detectar_trimestre_especifico(texto)
+    mes_especifico = detectar_mes_especifico(texto)
+    periodo_exp = detectar_periodo_generico(texto, default=None)
+
+    if trimestre_especifico is not None or periodo_exp == "trimestral":
+        q_num = trimestre_especifico or ((ahora.month - 1) // 3) + 1
+        desde, hasta = calcular_rango_trimestre(q_num)
+        nombre_archivo_base = f"gastos_trimestre_Q{q_num}_{desde.year}"
+        etiqueta_caption = f"Trimestre Q{q_num} {desde.year}"
+
+    elif mes_especifico is not None or periodo_exp in ("mensual", None):
+        mes_num = mes_especifico or ahora.month
+        desde, hasta = calcular_rango_mes(mes_num)
+        nombre_archivo_base = f"gastos_mes_{MESES_ES[mes_num]}_{desde.year}"
+        etiqueta_caption = f"{MESES_ES[mes_num].capitalize()} {desde.year}"
+
+    else:
+        desde, hasta = calcular_rango_fechas(periodo_exp)
+        fecha_archivo = ahora.strftime("%Y%m%d")
+        nombre_archivo_base = f"gastos_{periodo_exp}_{fecha_archivo}"
+        etiqueta_caption = ETIQUETAS_PERIODO.get(periodo_exp, "")
+
+    return desde, hasta, nombre_archivo_base, etiqueta_caption
+
 def generar_excel_gastos(gastos: list) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill
     from openpyxl.utils import get_column_letter
 
+    fuente_encabezado = Font(bold=True, color="FFFFFF")
+    relleno_encabezado = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    fuente_subtitulo = Font(bold=True, size=12)
+
+    def fila_encabezado(ws, fila, encabezados):
+        for col_num, texto_col in enumerate(encabezados, start=1):
+            celda = ws.cell(row=fila, column=col_num, value=texto_col)
+            celda.font = fuente_encabezado
+            celda.fill = relleno_encabezado
+            celda.alignment = Alignment(horizontal="center")
+
     wb = Workbook()
     ws = wb.active
     ws.title = "Gastos"
 
-    encabezados = ["Fecha", "Categoría", "Monto", "Descripción"]
-    ws.append(encabezados)
-    fuente_encabezado = Font(bold=True, color="FFFFFF")
-    relleno_encabezado = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    for col_num, _ in enumerate(encabezados, start=1):
-        celda = ws.cell(row=1, column=col_num)
-        celda.font = fuente_encabezado
-        celda.fill = relleno_encabezado
-        celda.alignment = Alignment(horizontal="center")
+    # --- Sección 1: Detalle de gastos ---
+    fila_encabezado(ws, 1, ["Fecha", "Categoría", "Monto", "Descripción"])
 
     total = 0.0
+    por_categoria = {}
+    fila = 2
     for g in gastos:
         try:
             fecha_str = datetime.fromisoformat(g["fecha"]).astimezone(ZONA_HORARIA).strftime("%Y-%m-%d %H:%M")
         except Exception:
             fecha_str = g.get("fecha", "")
         monto = float(g.get("monto", 0))
+        categoria = g.get("categoria", "Otros")
         total += monto
-        ws.append([fecha_str, g.get("categoria", ""), monto, g.get("descripcion", "")])
+        por_categoria[categoria] = por_categoria.get(categoria, 0.0) + monto
+        ws.cell(row=fila, column=1, value=fecha_str)
+        ws.cell(row=fila, column=2, value=categoria)
+        ws.cell(row=fila, column=3, value=monto)
+        ws.cell(row=fila, column=4, value=g.get("descripcion", ""))
+        fila += 1
 
-    fila_total = ws.max_row + 1
-    ws.cell(row=fila_total, column=1, value="TOTAL").font = Font(bold=True)
-    celda_total = ws.cell(row=fila_total, column=3, value=total)
-    celda_total.font = Font(bold=True)
+    ws.cell(row=fila, column=1, value="TOTAL").font = Font(bold=True)
+    ws.cell(row=fila, column=3, value=total).font = Font(bold=True)
 
-    anchos = [18, 20, 12, 35]
-    for i, ancho in enumerate(anchos, start=1):
+    # --- Sección 2: Resumen por categoría (misma hoja, dos filas más abajo) ---
+    fila += 3
+    ws.cell(row=fila, column=1, value="Resumen por categoría").font = fuente_subtitulo
+    fila += 1
+    fila_encabezado(ws, fila, ["Categoría", "Total", "Porcentaje"])
+    fila += 1
+
+    for categoria, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
+        porcentaje = (monto / total) if total else 0
+        ws.cell(row=fila, column=1, value=categoria)
+        ws.cell(row=fila, column=2, value=monto)
+        celda_pct = ws.cell(row=fila, column=3, value=porcentaje)
+        celda_pct.number_format = "0.0%"
+        fila += 1
+
+    ws.cell(row=fila, column=1, value="TOTAL").font = Font(bold=True)
+    ws.cell(row=fila, column=2, value=total).font = Font(bold=True)
+    celda_pct_total = ws.cell(row=fila, column=3, value=1.0 if total else 0)
+    celda_pct_total.number_format = "0.0%"
+    celda_pct_total.font = Font(bold=True)
+
+    for i, ancho in enumerate([18, 20, 12, 35], start=1):
         ws.column_dimensions[get_column_letter(i)].width = ancho
 
     buffer = io.BytesIO()
@@ -473,22 +584,20 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
             periodo = detectar_periodo_informe(texto)
 
             if detectar_solicitud_exportar(texto):
-                # El usuario pidió exportar un CSV (ej. "exportar trimestre")
+                # El usuario pidió exportar un Excel (ej. "exportar trimestre", "exportar julio", "exportar Q2")
                 categoria = detectar_categoria_informe(texto)
-                periodo_exp = detectar_periodo_generico(texto, default="mensual")
-                desde, hasta = calcular_rango_fechas(periodo_exp)
+                desde, hasta, nombre_archivo_base, etiqueta_caption = preparar_exportacion(texto)
                 gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
-                print(f"📤 Exportación {periodo_exp}{' / ' + categoria if categoria else ''} solicitada por {numero_remitente} ({len(gastos)} gastos)")
+                print(f"📤 Exportación '{nombre_archivo_base}'{' / ' + categoria if categoria else ''} solicitada por {numero_remitente} ({len(gastos)} gastos)")
 
                 if not gastos:
-                    await enviar_mensaje_whatsapp(numero_remitente, f"No tienes gastos registrados {ETIQUETAS_PERIODO.get(periodo_exp, 'en ese período')} para exportar.")
+                    await enviar_mensaje_whatsapp(numero_remitente, f"No tienes gastos registrados en {etiqueta_caption} para exportar.")
                 else:
                     contenido_excel = generar_excel_gastos(gastos)
-                    fecha_archivo = datetime.now(ZONA_HORARIA).strftime("%Y%m%d")
-                    nombre_archivo = f"gastos_{periodo_exp}_{fecha_archivo}.xlsx"
+                    nombre_archivo = f"{nombre_archivo_base}.xlsx"
                     media_id = await subir_documento_whatsapp(contenido_excel, nombre_archivo)
                     if media_id:
-                        caption = f"📤 Gastos {ETIQUETAS_PERIODO.get(periodo_exp, '')} ({len(gastos)} registros)"
+                        caption = f"📤 Gastos — {etiqueta_caption} ({len(gastos)} registros)"
                         await enviar_documento_whatsapp(numero_remitente, media_id, nombre_archivo, caption)
                     else:
                         await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No pude generar el archivo de exportación. Intenta de nuevo en un momento.")
