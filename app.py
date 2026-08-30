@@ -64,6 +64,26 @@ ACLARACION_CATEGORIAS = (
     "hosting, dominios, apps de productividad, etc.)."
 )
 
+CATEGORIA_EMOJIS = {
+    "Restaurantes": "🍽️",
+    "Supermercado": "🛒",
+    "Transporte": "🚗",
+    "Ocio": "🎮",
+    "Suscripciones": "📱",
+    "Vivienda y servicios": "🏠",
+    "Compras": "🛍️",
+    "Salud": "💊",
+    "Educación": "📚",
+    "Finanzas": "💳",
+    "Otros": "❓",
+}
+
+def formatear_fecha_hora_actual():
+    ahora = datetime.now(ZONA_HORARIA)
+    fecha_str = f"{ahora.day} de {MESES_ES[ahora.month]} de {ahora.year}"
+    hora_str = ahora.strftime("%H:%M")
+    return fecha_str, hora_str
+
 GENERATION_CONFIG = types.GenerateContentConfig(
     response_mime_type="application/json"
 )
@@ -469,10 +489,14 @@ def generar_texto_balance(periodo: str, total_ingresos: float, total_gastos: flo
 def formatear_confirmacion_ingreso(datos: dict) -> str:
     if not datos.get("monto"):
         return "⚠️ No pude procesar ese ingreso. ¿Puedes intentar describirlo de otra forma?"
+    fecha_str, hora_str = formatear_fecha_hora_actual()
     return (
-        f"✅ Ingreso registrado\n"
-        f"💰 Monto: {datos.get('monto')}\n"
-        f"📝 {datos.get('descripcion')}"
+        "✅ Transacción Registrada\n"
+        f"• 💰 Monto: {datos.get('monto')}\n"
+        f"• 📝 Descripción: {datos.get('descripcion')}\n"
+        f"• 📅 Fecha: {fecha_str}\n"
+        f"• 🕐 Hora: {hora_str}\n"
+        f"• 🔄 Tipo: Ingreso"
     )
 
 # --- EXPORTAR EXCEL ---
@@ -693,11 +717,17 @@ async def enviar_mensaje_whatsapp(numero_destino: str, texto: str):
 def formatear_confirmacion(datos: dict) -> str:
     if datos.get("categoria") == "Error":
         return "⚠️ No pude procesar ese gasto. ¿Puedes intentar describirlo de otra forma?"
+    fecha_str, hora_str = formatear_fecha_hora_actual()
+    categoria = datos.get("categoria", "Otros")
+    emoji_categoria = CATEGORIA_EMOJIS.get(categoria, "🏷️")
     return (
-        f"✅ Gasto registrado\n"
-        f"💰 Monto: {datos.get('monto')}\n"
-        f"🏷️ Categoría: {datos.get('categoria')}\n"
-        f"📝 {datos.get('descripcion')}"
+        "✅ Transacción Registrada\n"
+        f"• 💰 Monto: {datos.get('monto')}\n"
+        f"• {emoji_categoria} Categoría: {categoria}\n"
+        f"• 📝 Descripción: {datos.get('descripcion')}\n"
+        f"• 📅 Fecha: {fecha_str}\n"
+        f"• 🕐 Hora: {hora_str}\n"
+        f"• 🔄 Tipo: Gasto"
     )
 
 # --- 6. RUTAS DEL WEBHOOK ---
