@@ -78,11 +78,36 @@ CATEGORIA_EMOJIS = {
     "Otros": "❓",
 }
 
+CATEGORIAS_INGRESO = ["Sueldo", "Freelance", "Extras", "Regalo", "Otros"]
+CATEGORIAS_INGRESO_TEXTO = ", ".join(CATEGORIAS_INGRESO)
+INGRESO_EMOJIS = {
+    "Sueldo": "💼",
+    "Freelance": "💻",
+    "Extras": "➕",
+    "Regalo": "🎁",
+    "Otros": "❓",
+}
+
 def formatear_fecha_hora_actual():
     ahora = datetime.now(ZONA_HORARIA)
     fecha_str = f"{ahora.day} de {MESES_ES[ahora.month]} de {ahora.year}"
     hora_str = ahora.strftime("%H:%M")
     return fecha_str, hora_str
+
+MONEDA_SIMBOLO = "€"
+MONEDA_CODIGO = "EUR"
+
+def formatear_monto_corto(monto) -> str:
+    try:
+        return f"{MONEDA_SIMBOLO}{float(monto):.2f}"
+    except (TypeError, ValueError):
+        return f"{MONEDA_SIMBOLO}{monto}"
+
+def formatear_monto(monto) -> str:
+    try:
+        return f"{MONEDA_SIMBOLO}{float(monto):.2f} {MONEDA_CODIGO}"
+    except (TypeError, ValueError):
+        return f"{MONEDA_SIMBOLO}{monto} {MONEDA_CODIGO}"
 
 GENERATION_CONFIG = types.GenerateContentConfig(
     response_mime_type="application/json"
@@ -145,10 +170,10 @@ async def procesar_gasto_con_ia(texto_usuario: str):
     return await generar_con_reintentos(contenido)
 
 async def procesar_ingreso_con_ia(texto_usuario: str):
-    prompt_sistema = """
+    prompt_sistema = f"""
     Eres un asistente financiero. Analiza el mensaje y extrae los datos de un INGRESO de dinero
-    (sueldo, freelance, regalo, venta, etc.), no de un gasto.
-    Devuelve un JSON con esta estructura exacta: {"monto": 0.0, "descripcion": "Descripción breve"}
+    (no un gasto). Categorías permitidas: [{CATEGORIAS_INGRESO_TEXTO}].
+    Devuelve un JSON con esta estructura exacta: {{"monto": 0.0, "categoria": "Categoría", "descripcion": "Descripción breve"}}
     """
     contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
     return await generar_con_reintentos(contenido)
@@ -226,6 +251,7 @@ async def guardar_ingreso(numero: str, datos: dict):
     payload = {
         "numero": numero,
         "monto": datos.get("monto", 0.0),
+        "categoria": datos.get("categoria", "Otros"),
         "descripcion": datos.get("descripcion", ""),
     }
     respuesta = await request_con_reintentos("POST", url, headers, json_payload=payload)
@@ -243,7 +269,7 @@ async def obtener_ingresos(numero: str, desde: datetime, hasta: datetime):
     params = {
         "numero": f"eq.{numero}",
         "fecha": [f"gte.{desde.isoformat()}", f"lt.{hasta.isoformat()}"],
-        "select": "monto,descripcion,fecha",
+        "select": "monto,categoria,descripcion,fecha",
         "order": "fecha.asc",
     }
     respuesta = await request_con_reintentos("GET", url, headers, params=params)
@@ -363,44 +389,86 @@ ETIQUETAS_PERIODO = {
     "anual": "este año",
 }
 
-def generar_texto_informe(periodo: str, gastos: list, categoria: str = None):
-    etiquetas = {
-        "diario": "📅 Resumen diario",
-        "semanal": "📅 Resumen semanal",
-        "mensual": "📅 Resumen mensual",
-        "trimestral": "📅 Resumen trimestral",
-        "anual": "📅 Resumen anual",
-    }
-    titulo = etiquetas.get(periodo, "📅 Resumen")
+def resolver_periodo(texto: str, periodo_tipo: str):
+    """Dado un tipo de período ya detectado, calcula el rango de fechas exacto y una
+    etiqueta legible, respetando mes/trimestre específicos si se mencionan (ej. 'julio', 'Q2')."""
+    ahora = datetime.now(ZONA_HORARIA)
+    if periodo_tipo == "mensual":
+        mes_num = detectar_mes_especifico(texto) or ahora.month
+        desde, hasta = calcular_rango_mes(mes_num)
+        etiqueta = f"{MESES_ES[mes_num]} {desde.year}"
+    elif periodo_tipo == "trimestral":
+        q_num = detectar_trimestre_especifico(texto) or ((ahora.month - 1) // 3) + 1
+        desde, hasta = calcular_rango_trimestre(q_num)
+        etiqueta = f"trimestre Q{q_num} {desde.year}"
+    else:
+        desde, hasta = calcular_rango_fechas(periodo_tipo)
+        etiqueta = ETIQUETAS_PERIODO.get(periodo_tipo, periodo_tipo)
+    return desde, hasta, etiqueta
+
+def formatear_linea_transaccion(item: dict) -> str:
+    try:
+        fecha_hora = datetime.fromisoformat(item["fecha"]).astimezone(ZONA_HORARIA).strftime("%d/%m - %H:%M")
+    except Exception:
+        fecha_hora = ""
+    descripcion = item.get("descripcion", "")
+    return f". {fecha_hora}: {descripcion} - {formatear_monto_corto(item.get('monto', 0))}"
+
+def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria: str = None) -> str:
+    # --- Informe filtrado por una sola categoría de gasto (sin sección de ingresos/balance) ---
     if categoria:
-        titulo += f" — 🏷️ {categoria}"
+        emoji_cat = CATEGORIA_EMOJIS.get(categoria, "❓")
+        titulo = f"📊 Resumen de {etiqueta} — {emoji_cat} {categoria}"
+        if not gastos:
+            return f"{titulo}\n\nNo tienes gastos registrados en este período. 🎉"
+        total = sum(float(g["monto"]) for g in gastos)
+        lineas = [titulo, "", f"💸 Total: {formatear_monto(total)}", ""]
+        for g in sorted(gastos, key=lambda x: x.get("fecha", "")):
+            lineas.append(formatear_linea_transaccion(g))
+        return "\n".join(lineas)
 
-    if not gastos:
-        return f"{titulo}\n\nNo tienes gastos registrados en este período. 🎉"
+    # --- Informe general: gastos por categoría + ingresos por categoría + balance ---
+    titulo = f"📊 Resumen de {etiqueta}"
+    total_gastos = sum(float(g["monto"]) for g in gastos)
+    total_ingresos = sum(float(i["monto"]) for i in ingresos)
 
-    total = sum(float(g["monto"]) for g in gastos)
+    lineas = [titulo, "", f"💸 Total gastos: {formatear_monto(total_gastos)}"]
 
-    lineas = [titulo, "", f"💰 Total: {total:.2f}"]
-
-    if not categoria:
+    if gastos:
         por_categoria = {}
         for g in gastos:
-            cat = g.get("categoria", "Otros")
-            por_categoria[cat] = por_categoria.get(cat, 0.0) + float(g["monto"])
+            por_categoria.setdefault(g.get("categoria", "Otros"), []).append(g)
         lineas.append("")
         lineas.append("Por categoría:")
-        for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
-            lineas.append(f"  🏷️ {cat}: {monto:.2f}")
+        for cat, lista in sorted(por_categoria.items(), key=lambda kv: -sum(float(x["monto"]) for x in kv[1])):
+            total_cat = sum(float(x["monto"]) for x in lista)
+            emoji_cat = CATEGORIA_EMOJIS.get(cat, "❓")
+            lineas.append(f"{emoji_cat} {cat}: {formatear_monto_corto(total_cat)}")
+            for g in sorted(lista, key=lambda x: x.get("fecha", "")):
+                lineas.append(formatear_linea_transaccion(g))
 
     lineas.append("")
-    lineas.append(f"Detalle ({len(gastos)} gastos):")
-    for g in gastos:
-        fecha_str = ""
-        try:
-            fecha_str = datetime.fromisoformat(g["fecha"]).astimezone(ZONA_HORARIA).strftime("%d/%m %H:%M")
-        except Exception:
-            pass
-        lineas.append(f"  • {fecha_str} — {g['categoria']}: {g['monto']} ({g.get('descripcion', '')})")
+    lineas.append(f"💰 Total ingresos: {formatear_monto(total_ingresos)}")
+
+    if ingresos:
+        por_categoria_ing = {}
+        for i in ingresos:
+            cat = i.get("categoria", "Otros")
+            por_categoria_ing[cat] = por_categoria_ing.get(cat, 0.0) + float(i["monto"])
+        lineas.append("")
+        lineas.append("Por categoría:")
+        for cat, total_cat in sorted(por_categoria_ing.items(), key=lambda x: -x[1]):
+            emoji_cat = INGRESO_EMOJIS.get(cat, "❓")
+            lineas.append(f"{emoji_cat} {cat}: {formatear_monto_corto(total_cat)}")
+
+    balance = total_ingresos - total_gastos
+    signo = "+" if balance >= 0 else "-"
+    lineas.append("")
+    if total_ingresos > 0:
+        pct_gastado = (total_gastos / total_ingresos) * 100
+        lineas.append(f"🧮 Balance: {signo}{formatear_monto_corto(abs(balance))} ({pct_gastado:.1f}% de tus ingresos gastado)")
+    else:
+        lineas.append(f"🧮 Balance: {signo}{formatear_monto_corto(abs(balance))}")
 
     return "\n".join(lineas)
 
@@ -490,9 +558,12 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
     if not datos.get("monto"):
         return "⚠️ No pude procesar ese ingreso. ¿Puedes intentar describirlo de otra forma?"
     fecha_str, hora_str = formatear_fecha_hora_actual()
+    categoria = datos.get("categoria", "Otros")
+    emoji_categoria = INGRESO_EMOJIS.get(categoria, "❓")
     return (
         "✅ Transacción Registrada\n"
-        f"• 💰 Monto: {datos.get('monto')}\n"
+        f"• 💰 Monto: {formatear_monto(datos.get('monto'))}\n"
+        f"• 🏷️ Categoría: {emoji_categoria} {categoria}\n"
         f"• 📝 Descripción: {datos.get('descripcion')}\n"
         f"• 📅 Fecha: {fecha_str}\n"
         f"• 🕐 Hora: {hora_str}\n"
@@ -719,11 +790,11 @@ def formatear_confirmacion(datos: dict) -> str:
         return "⚠️ No pude procesar ese gasto. ¿Puedes intentar describirlo de otra forma?"
     fecha_str, hora_str = formatear_fecha_hora_actual()
     categoria = datos.get("categoria", "Otros")
-    emoji_categoria = CATEGORIA_EMOJIS.get(categoria, "🏷️")
+    emoji_categoria = CATEGORIA_EMOJIS.get(categoria, "❓")
     return (
         "✅ Transacción Registrada\n"
-        f"• 💰 Monto: {datos.get('monto')}\n"
-        f"• {emoji_categoria} Categoría: {categoria}\n"
+        f"• 💰 Monto: {formatear_monto(datos.get('monto'))}\n"
+        f"• 🏷️ Categoría: {emoji_categoria} {categoria}\n"
         f"• 📝 Descripción: {datos.get('descripcion')}\n"
         f"• 📅 Fecha: {fecha_str}\n"
         f"• 🕐 Hora: {hora_str}\n"
@@ -757,26 +828,15 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     else:
                         await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No pude generar el archivo de exportación. Intenta de nuevo en un momento.")
             elif periodo:
-                # El usuario pidió un resumen/informe (opcionalmente filtrado por categoría)
+                # El usuario pidió un resumen/informe (opcionalmente filtrado por categoría,
+                # y opcionalmente con mes/trimestre específico, ej. "resumen de julio")
                 categoria = detectar_categoria_informe(texto)
-                desde, hasta = calcular_rango_fechas(periodo)
+                desde, hasta, etiqueta = resolver_periodo(texto, periodo)
                 gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
-                informe = generar_texto_informe(periodo, gastos, categoria)
+                ingresos = [] if categoria else await obtener_ingresos(numero_remitente, desde, hasta)
+                informe = generar_texto_informe(etiqueta, gastos, ingresos, categoria)
 
-                # Si no es un informe filtrado por categoría, añadimos ingresos/balance si existen
-                if not categoria:
-                    ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
-                    total_ingresos = sum(float(i["monto"]) for i in ingresos)
-                    if total_ingresos > 0:
-                        total_gastos = sum(float(g["monto"]) for g in gastos)
-                        balance = total_ingresos - total_gastos
-                        pct_gastado = (total_gastos / total_ingresos) * 100
-                        informe += (
-                            f"\n\n💼 Ingresos: {total_ingresos:.2f}"
-                            f"\n🧮 Balance: {balance:.2f} ({pct_gastado:.1f}% de tus ingresos gastado)"
-                        )
-
-                print(f"📊 Informe {periodo}{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
+                print(f"📊 Informe '{etiqueta}'{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
                 await enviar_mensaje_whatsapp(numero_remitente, informe)
             elif detectar_solicitud_porcentaje(texto):
                 # El usuario pidió un porcentaje (ej. "qué % de mis gastos/ingresos es ocio")
