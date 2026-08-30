@@ -407,12 +407,8 @@ def resolver_periodo(texto: str, periodo_tipo: str):
     return desde, hasta, etiqueta
 
 def formatear_linea_transaccion(item: dict) -> str:
-    try:
-        fecha_hora = datetime.fromisoformat(item["fecha"]).astimezone(ZONA_HORARIA).strftime("%d/%m - %H:%M")
-    except Exception:
-        fecha_hora = ""
     descripcion = item.get("descripcion", "")
-    return f". {fecha_hora}: {descripcion} - {formatear_monto_corto(item.get('monto', 0))}"
+    return f". {descripcion} - {formatear_monto_corto(item.get('monto', 0))}"
 
 def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria: str = None) -> str:
     # --- Informe filtrado por una sola categoría de gasto (sin sección de ingresos/balance) ---
