@@ -654,72 +654,125 @@ def preparar_exportacion(texto: str):
 
     return desde, hasta, nombre_archivo_base, etiqueta_caption
 
-def generar_excel_gastos(gastos: list) -> bytes:
+def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill
     from openpyxl.utils import get_column_letter
 
     fuente_encabezado = Font(bold=True, color="FFFFFF")
     relleno_encabezado = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    relleno_encabezado_ingresos = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
     fuente_subtitulo = Font(bold=True, size=12)
 
-    def fila_encabezado(ws, fila, encabezados):
+    def fila_encabezado(ws, fila, encabezados, relleno=relleno_encabezado):
         for col_num, texto_col in enumerate(encabezados, start=1):
             celda = ws.cell(row=fila, column=col_num, value=texto_col)
             celda.font = fuente_encabezado
-            celda.fill = relleno_encabezado
+            celda.fill = relleno
             celda.alignment = Alignment(horizontal="center")
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Gastos"
+    ws.title = "Resumen"
+
+    total_gastos = sum(float(g.get("monto", 0)) for g in gastos)
+    total_ingresos = sum(float(i.get("monto", 0)) for i in ingresos)
+
+    por_categoria_gasto = {}
+    for g in gastos:
+        cat = g.get("categoria", "Otros")
+        por_categoria_gasto[cat] = por_categoria_gasto.get(cat, 0.0) + float(g.get("monto", 0))
+
+    por_categoria_ingreso = {}
+    for i in ingresos:
+        cat = i.get("categoria", "Otros")
+        por_categoria_ingreso[cat] = por_categoria_ingreso.get(cat, 0.0) + float(i.get("monto", 0))
 
     # --- Sección 1: Detalle de gastos ---
-    fila_encabezado(ws, 1, ["Fecha", "Categoría", "Monto", "Descripción"])
-
-    total = 0.0
-    por_categoria = {}
-    fila = 2
+    fila = 1
+    fila_encabezado(ws, fila, ["Fecha", "Categoría", "Monto", "Descripción"])
+    fila += 1
     for g in gastos:
         try:
             fecha_str = datetime.fromisoformat(g["fecha"]).astimezone(ZONA_HORARIA).strftime("%Y-%m-%d %H:%M")
         except Exception:
             fecha_str = g.get("fecha", "")
-        monto = float(g.get("monto", 0))
-        categoria = g.get("categoria", "Otros")
-        total += monto
-        por_categoria[categoria] = por_categoria.get(categoria, 0.0) + monto
         ws.cell(row=fila, column=1, value=fecha_str)
-        ws.cell(row=fila, column=2, value=categoria)
-        ws.cell(row=fila, column=3, value=monto)
+        ws.cell(row=fila, column=2, value=g.get("categoria", "Otros"))
+        ws.cell(row=fila, column=3, value=float(g.get("monto", 0)))
         ws.cell(row=fila, column=4, value=g.get("descripcion", ""))
         fila += 1
-
     ws.cell(row=fila, column=1, value="TOTAL").font = Font(bold=True)
-    ws.cell(row=fila, column=3, value=total).font = Font(bold=True)
+    ws.cell(row=fila, column=3, value=total_gastos).font = Font(bold=True)
 
-    # --- Sección 2: Resumen por categoría (misma hoja, dos filas más abajo) ---
+    # --- Sección 2: Resumen de gastos por categoría (% sobre el total de ingresos) ---
     fila += 3
-    ws.cell(row=fila, column=1, value="Resumen por categoría").font = fuente_subtitulo
+    ws.cell(row=fila, column=1, value="Resumen de gastos por categoría").font = fuente_subtitulo
     fila += 1
-    fila_encabezado(ws, fila, ["Categoría", "Total", "Porcentaje"])
+    fila_encabezado(ws, fila, ["Categoría", "Total", "% de ingresos"])
     fila += 1
-
-    for categoria, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
-        porcentaje = (monto / total) if total else 0
+    for categoria, monto in sorted(por_categoria_gasto.items(), key=lambda x: -x[1]):
+        porcentaje = (monto / total_ingresos) if total_ingresos else 0
         ws.cell(row=fila, column=1, value=categoria)
         ws.cell(row=fila, column=2, value=monto)
         celda_pct = ws.cell(row=fila, column=3, value=porcentaje)
         celda_pct.number_format = "0.0%"
         fila += 1
-
-    ws.cell(row=fila, column=1, value="TOTAL").font = Font(bold=True)
-    ws.cell(row=fila, column=2, value=total).font = Font(bold=True)
-    celda_pct_total = ws.cell(row=fila, column=3, value=1.0 if total else 0)
+    ws.cell(row=fila, column=1, value="TOTAL GASTOS").font = Font(bold=True)
+    ws.cell(row=fila, column=2, value=total_gastos).font = Font(bold=True)
+    celda_pct_total = ws.cell(row=fila, column=3, value=(total_gastos / total_ingresos) if total_ingresos else 0)
     celda_pct_total.number_format = "0.0%"
     celda_pct_total.font = Font(bold=True)
 
-    for i, ancho in enumerate([18, 20, 12, 35], start=1):
+    # --- Sección 3: Detalle de ingresos ---
+    fila += 3
+    ws.cell(row=fila, column=1, value="Detalle de ingresos").font = fuente_subtitulo
+    fila += 1
+    fila_encabezado(ws, fila, ["Fecha", "Categoría", "Monto", "Descripción"], relleno=relleno_encabezado_ingresos)
+    fila += 1
+    for i in ingresos:
+        try:
+            fecha_str = datetime.fromisoformat(i["fecha"]).astimezone(ZONA_HORARIA).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            fecha_str = i.get("fecha", "")
+        ws.cell(row=fila, column=1, value=fecha_str)
+        ws.cell(row=fila, column=2, value=i.get("categoria", "Otros"))
+        ws.cell(row=fila, column=3, value=float(i.get("monto", 0)))
+        ws.cell(row=fila, column=4, value=i.get("descripcion", ""))
+        fila += 1
+    ws.cell(row=fila, column=1, value="TOTAL").font = Font(bold=True)
+    ws.cell(row=fila, column=3, value=total_ingresos).font = Font(bold=True)
+
+    # --- Sección 4: Resumen de ingresos por categoría (% del total de ingresos) ---
+    fila += 3
+    ws.cell(row=fila, column=1, value="Resumen de ingresos por categoría").font = fuente_subtitulo
+    fila += 1
+    fila_encabezado(ws, fila, ["Categoría", "Total", "% del total"], relleno=relleno_encabezado_ingresos)
+    fila += 1
+    for categoria, monto in sorted(por_categoria_ingreso.items(), key=lambda x: -x[1]):
+        porcentaje = (monto / total_ingresos) if total_ingresos else 0
+        ws.cell(row=fila, column=1, value=categoria)
+        ws.cell(row=fila, column=2, value=monto)
+        celda_pct = ws.cell(row=fila, column=3, value=porcentaje)
+        celda_pct.number_format = "0.0%"
+        fila += 1
+    ws.cell(row=fila, column=1, value="TOTAL INGRESOS").font = Font(bold=True)
+    ws.cell(row=fila, column=2, value=total_ingresos).font = Font(bold=True)
+    celda_pct_total_ing = ws.cell(row=fila, column=3, value=1.0 if total_ingresos else 0)
+    celda_pct_total_ing.number_format = "0.0%"
+    celda_pct_total_ing.font = Font(bold=True)
+
+    # --- Sección 5: Balance ---
+    fila += 3
+    balance = total_ingresos - total_gastos
+    ws.cell(row=fila, column=1, value="BALANCE").font = fuente_subtitulo
+    ws.cell(row=fila, column=2, value=balance).font = fuente_subtitulo
+    if total_ingresos:
+        celda_pct_balance = ws.cell(row=fila, column=3, value=total_gastos / total_ingresos)
+        celda_pct_balance.number_format = "0.0%"
+        celda_pct_balance.font = fuente_subtitulo
+
+    for i, ancho in enumerate([18, 22, 14, 35], start=1):
         ws.column_dimensions[get_column_letter(i)].width = ancho
 
     buffer = io.BytesIO()
@@ -810,12 +863,13 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 categoria = detectar_categoria_informe(texto)
                 desde, hasta, nombre_archivo_base, etiqueta_caption = preparar_exportacion(texto)
                 gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
-                print(f"📤 Exportación '{nombre_archivo_base}'{' / ' + categoria if categoria else ''} solicitada por {numero_remitente} ({len(gastos)} gastos)")
+                ingresos = [] if categoria else await obtener_ingresos(numero_remitente, desde, hasta)
+                print(f"📤 Exportación '{nombre_archivo_base}'{' / ' + categoria if categoria else ''} solicitada por {numero_remitente} ({len(gastos)} gastos, {len(ingresos)} ingresos)")
 
-                if not gastos:
-                    await enviar_mensaje_whatsapp(numero_remitente, f"No tienes gastos registrados en {etiqueta_caption} para exportar.")
+                if not gastos and not ingresos:
+                    await enviar_mensaje_whatsapp(numero_remitente, f"No tienes gastos ni ingresos registrados en {etiqueta_caption} para exportar.")
                 else:
-                    contenido_excel = generar_excel_gastos(gastos)
+                    contenido_excel = generar_excel_gastos(gastos, ingresos)
                     nombre_archivo = f"{nombre_archivo_base}.xlsx"
                     media_id = await subir_documento_whatsapp(contenido_excel, nombre_archivo)
                     if media_id:
