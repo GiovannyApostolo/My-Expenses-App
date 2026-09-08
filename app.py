@@ -683,13 +683,25 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
         cat = g.get("categoria", "Otros")
         por_categoria_gasto[cat] = por_categoria_gasto.get(cat, 0.0) + float(g.get("monto", 0))
 
-    por_categoria_ingreso = {}
-    for i in ingresos:
-        cat = i.get("categoria", "Otros")
-        por_categoria_ingreso[cat] = por_categoria_ingreso.get(cat, 0.0) + float(i.get("monto", 0))
-
-    # --- Sección 1: Detalle de gastos ---
+    # --- Sección 1: Detalle de ingresos ---
     fila = 1
+    fila_encabezado(ws, fila, ["Fecha", "Categoría", "Monto", "Descripción"], relleno=relleno_encabezado_ingresos)
+    fila += 1
+    for i in ingresos:
+        try:
+            fecha_str = datetime.fromisoformat(i["fecha"]).astimezone(ZONA_HORARIA).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            fecha_str = i.get("fecha", "")
+        ws.cell(row=fila, column=1, value=fecha_str)
+        ws.cell(row=fila, column=2, value=i.get("categoria", "Otros"))
+        ws.cell(row=fila, column=3, value=float(i.get("monto", 0)))
+        ws.cell(row=fila, column=4, value=i.get("descripcion", ""))
+        fila += 1
+    ws.cell(row=fila, column=1, value="TOTAL").font = Font(bold=True)
+    ws.cell(row=fila, column=3, value=total_ingresos).font = Font(bold=True)
+
+    # --- Sección 2: Detalle de gastos ---
+    fila += 3
     fila_encabezado(ws, fila, ["Fecha", "Categoría", "Monto", "Descripción"])
     fila += 1
     for g in gastos:
@@ -705,7 +717,7 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
     ws.cell(row=fila, column=1, value="TOTAL").font = Font(bold=True)
     ws.cell(row=fila, column=3, value=total_gastos).font = Font(bold=True)
 
-    # --- Sección 2: Resumen de gastos por categoría (% sobre el total de ingresos) ---
+    # --- Sección 3: Resumen de gastos por categoría (% sobre el total de ingresos) ---
     fila += 3
     ws.cell(row=fila, column=1, value="Resumen de gastos por categoría").font = fuente_subtitulo
     fila += 1
@@ -724,45 +736,7 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
     celda_pct_total.number_format = "0.0%"
     celda_pct_total.font = Font(bold=True)
 
-    # --- Sección 3: Detalle de ingresos ---
-    fila += 3
-    ws.cell(row=fila, column=1, value="Detalle de ingresos").font = fuente_subtitulo
-    fila += 1
-    fila_encabezado(ws, fila, ["Fecha", "Categoría", "Monto", "Descripción"], relleno=relleno_encabezado_ingresos)
-    fila += 1
-    for i in ingresos:
-        try:
-            fecha_str = datetime.fromisoformat(i["fecha"]).astimezone(ZONA_HORARIA).strftime("%Y-%m-%d %H:%M")
-        except Exception:
-            fecha_str = i.get("fecha", "")
-        ws.cell(row=fila, column=1, value=fecha_str)
-        ws.cell(row=fila, column=2, value=i.get("categoria", "Otros"))
-        ws.cell(row=fila, column=3, value=float(i.get("monto", 0)))
-        ws.cell(row=fila, column=4, value=i.get("descripcion", ""))
-        fila += 1
-    ws.cell(row=fila, column=1, value="TOTAL").font = Font(bold=True)
-    ws.cell(row=fila, column=3, value=total_ingresos).font = Font(bold=True)
-
-    # --- Sección 4: Resumen de ingresos por categoría (% del total de ingresos) ---
-    fila += 3
-    ws.cell(row=fila, column=1, value="Resumen de ingresos por categoría").font = fuente_subtitulo
-    fila += 1
-    fila_encabezado(ws, fila, ["Categoría", "Total", "% del total"], relleno=relleno_encabezado_ingresos)
-    fila += 1
-    for categoria, monto in sorted(por_categoria_ingreso.items(), key=lambda x: -x[1]):
-        porcentaje = (monto / total_ingresos) if total_ingresos else 0
-        ws.cell(row=fila, column=1, value=categoria)
-        ws.cell(row=fila, column=2, value=monto)
-        celda_pct = ws.cell(row=fila, column=3, value=porcentaje)
-        celda_pct.number_format = "0.0%"
-        fila += 1
-    ws.cell(row=fila, column=1, value="TOTAL INGRESOS").font = Font(bold=True)
-    ws.cell(row=fila, column=2, value=total_ingresos).font = Font(bold=True)
-    celda_pct_total_ing = ws.cell(row=fila, column=3, value=1.0 if total_ingresos else 0)
-    celda_pct_total_ing.number_format = "0.0%"
-    celda_pct_total_ing.font = Font(bold=True)
-
-    # --- Sección 5: Balance ---
+    # --- Sección 4: Balance ---
     fila += 3
     balance = total_ingresos - total_gastos
     ws.cell(row=fila, column=1, value="BALANCE").font = fuente_subtitulo
