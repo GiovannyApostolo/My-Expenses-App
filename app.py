@@ -47,6 +47,7 @@ CATEGORIAS = [
     "Supermercado",
     "Transporte",
     "Ocio",
+    "Tabaco",
     "Suscripciones",
     "Vivienda y servicios",
     "Compras",
@@ -69,6 +70,7 @@ CATEGORIA_EMOJIS = {
     "Supermercado": "🛒",
     "Transporte": "🚗",
     "Ocio": "🎮",
+    "Tabaco": "🚬",
     "Suscripciones": "📱",
     "Vivienda y servicios": "🏠",
     "Compras": "🛍️",
@@ -85,8 +87,8 @@ INGRESO_EMOJIS = {
     "Freelance": "💻",
     "Extras": "➕",
     "Regalo": "🎁",
+    "Reintegro": "🫰",
     "Otros": "❓",
-    "Reintegros": "🫰",
 }
 
 def formatear_fecha_hora_actual():
@@ -181,25 +183,30 @@ async def procesar_ingreso_con_ia(texto_usuario: str):
 
 async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     """Se usa solo cuando ninguna palabra clave (informe/porcentaje/balance/exportar/ingreso)
-    coincidió con el mensaje. Decide si realmente es un gasto, un ingreso, o algo fuera del
-    alcance del bot, en vez de asumir por defecto que es un gasto."""
-    prompt_sistema = """
+    coincidió con el mensaje. Decide si realmente es un gasto, un ingreso, una corrección de
+    categoría, o algo fuera del alcance del bot, en vez de asumir por defecto que es un gasto."""
+    prompt_sistema = f"""
     Eres el clasificador de intención de un bot de finanzas personales por WhatsApp. El bot
-    SOLO puede: registrar gastos, registrar ingresos, generar resúmenes/informes, calcular
-    porcentajes y balance, y exportar datos a Excel. No hace nada más (no agenda, no da
-    consejos generales, no chatea de temas ajenos a las finanzas personales del usuario).
+    SOLO puede: registrar gastos, registrar ingresos, corregir la categoría de un gasto ya
+    registrado, generar resúmenes/informes, calcular porcentajes y balance, y exportar datos
+    a Excel. No hace nada más (no agenda, no da consejos generales, no chatea de temas ajenos
+    a las finanzas personales del usuario).
 
     Analiza el mensaje del usuario:
     - Si describe un GASTO real (algo que compró, pagó o gastó, con o sin monto explícito),
-      responde: {"intencion": "gasto"}
+      responde: {{"intencion": "gasto"}}
     - Si describe un INGRESO real (dinero que recibió: sueldo, freelance, regalo, venta, etc.),
-      responde: {"intencion": "ingreso"}
+      responde: {{"intencion": "ingreso"}}
+    - Si pide CAMBIAR/CORREGIR la categoría de un gasto que ya registró antes (identificándolo
+      por su descripción o nombre, ej. "pon el gasto de Jennifer González en Vivienda"),
+      responde: {{"intencion": "corregir_categoria", "descripcion_buscada": "el texto que
+      identifica el gasto original", "categoria_nueva": "una de [{CATEGORIAS_TEXTO}]"}}
     - Si es cualquier otra cosa (saludo, pregunta general, petición fuera del alcance del bot,
-      o un mensaje ambiguo sin relación clara a un gasto o ingreso), responde:
-      {"intencion": "no_soportado", "respuesta": "..."} donde "respuesta" es un mensaje breve,
+      o un mensaje ambiguo sin relación clara a lo anterior), responde:
+      {{"intencion": "no_soportado", "respuesta": "..."}} donde "respuesta" es un mensaje breve,
       amable y en español, explicando que no puedes ayudar con eso, y recordando brevemente
-      qué sí puedes hacer (registrar gastos e ingresos por texto o foto, generar resúmenes,
-      calcular porcentajes/balance, y exportar a Excel).
+      qué sí puedes hacer (registrar gastos e ingresos por texto o foto, corregir categorías,
+      generar resúmenes, calcular porcentajes/balance, y exportar a Excel).
 
     Devuelve SOLO el JSON correspondiente.
     """
@@ -267,6 +274,51 @@ async def guardar_gasto(numero: str, datos: dict):
         codigo = respuesta.status_code if respuesta else "sin respuesta"
         texto = respuesta.text if respuesta else ""
         print(f"⚠️ Error guardando gasto en Supabase: {codigo} - {texto}")
+
+async def buscar_gastos_por_descripcion(numero: str, descripcion_buscada: str, limite: int = 5):
+    url = f"{SUPABASE_URL}/rest/v1/gastos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+    }
+    params = {
+        "numero": f"eq.{numero}",
+        "descripcion": f"ilike.*{descripcion_buscada}*",
+        "select": "id,monto,categoria,descripcion,fecha",
+        "order": "fecha.desc",
+        "limit": str(limite),
+    }
+    respuesta = await request_con_reintentos("GET", url, headers, params=params)
+    if respuesta is None or respuesta.status_code != 200:
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        print(f"⚠️ Error buscando gasto en Supabase: {codigo}")
+        return []
+    return respuesta.json()
+
+async def actualizar_categoria_gasto(gasto_id: str, categoria_nueva: str) -> bool:
+    url = f"{SUPABASE_URL}/rest/v1/gastos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    params = {"id": f"eq.{gasto_id}"}
+    payload = {"categoria": categoria_nueva}
+    respuesta = await request_con_reintentos("PATCH", url, headers, json_payload=payload, params=params)
+    if respuesta is None or respuesta.status_code not in (200, 204):
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        print(f"⚠️ Error actualizando categoría en Supabase: {codigo}")
+        return False
+    return True
+
+def resolver_categoria(categoria_texto: str, categorias_validas: list):
+    if not categoria_texto:
+        return None
+    for c in categorias_validas:
+        if c.strip().lower() == categoria_texto.strip().lower():
+            return c
+    return None
 
 async def obtener_gastos(numero: str, desde: datetime, hasta: datetime, categoria: str = None):
     url = f"{SUPABASE_URL}/rest/v1/gastos"
@@ -982,6 +1034,32 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     if datos_ingreso.get("monto"):
                         await guardar_ingreso(numero_remitente, datos_ingreso)
                     await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion_ingreso(datos_ingreso))
+
+                elif intencion == "corregir_categoria":
+                    descripcion_buscada = clasificacion.get("descripcion_buscada", "")
+                    categoria_nueva = resolver_categoria(clasificacion.get("categoria_nueva", ""), CATEGORIAS)
+
+                    if not descripcion_buscada or not categoria_nueva:
+                        await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No entendí bien qué gasto o categoría quieres cambiar. ¿Puedes reformularlo? (ej. \"pon el gasto de Jennifer en Vivienda y servicios\")")
+                    else:
+                        candidatos = await buscar_gastos_por_descripcion(numero_remitente, descripcion_buscada)
+                        if not candidatos:
+                            await enviar_mensaje_whatsapp(numero_remitente, f"⚠️ No encontré ningún gasto que coincida con \"{descripcion_buscada}\".")
+                        else:
+                            gasto = candidatos[0]  # el más reciente
+                            ok = await actualizar_categoria_gasto(gasto["id"], categoria_nueva)
+                            emoji_cat = CATEGORIA_EMOJIS.get(categoria_nueva, "❓")
+                            print(f"✏️ Corrección de categoría: '{gasto.get('descripcion')}' -> {categoria_nueva} ({numero_remitente})")
+                            if ok:
+                                extra = f"\n\n(Había {len(candidatos) - 1} coincidencia(s) más sin modificar; sé más específico si quieres cambiar otra)" if len(candidatos) > 1 else ""
+                                await enviar_mensaje_whatsapp(
+                                    numero_remitente,
+                                    f"✅ Categoría actualizada\n"
+                                    f"• 📝 {gasto.get('descripcion')} ({formatear_monto_corto(gasto.get('monto'))})\n"
+                                    f"• {emoji_cat} Ahora está en: {categoria_nueva}{extra}"
+                                )
+                            else:
+                                await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No pude actualizar la categoría. Intenta de nuevo en un momento.")
 
                 elif intencion == "no_soportado":
                     respuesta = clasificacion.get("respuesta") or (
