@@ -178,6 +178,36 @@ async def procesar_ingreso_con_ia(texto_usuario: str):
     contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
     return await generar_con_reintentos(contenido)
 
+async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
+    """Se usa solo cuando ninguna palabra clave (informe/porcentaje/balance/exportar/ingreso)
+    coincidió con el mensaje. Decide si realmente es un gasto, un ingreso, o algo fuera del
+    alcance del bot, en vez de asumir por defecto que es un gasto."""
+    prompt_sistema = """
+    Eres el clasificador de intención de un bot de finanzas personales por WhatsApp. El bot
+    SOLO puede: registrar gastos, registrar ingresos, generar resúmenes/informes, calcular
+    porcentajes y balance, y exportar datos a Excel. No hace nada más (no agenda, no da
+    consejos generales, no chatea de temas ajenos a las finanzas personales del usuario).
+
+    Analiza el mensaje del usuario:
+    - Si describe un GASTO real (algo que compró, pagó o gastó, con o sin monto explícito),
+      responde: {"intencion": "gasto"}
+    - Si describe un INGRESO real (dinero que recibió: sueldo, freelance, regalo, venta, etc.),
+      responde: {"intencion": "ingreso"}
+    - Si es cualquier otra cosa (saludo, pregunta general, petición fuera del alcance del bot,
+      o un mensaje ambiguo sin relación clara a un gasto o ingreso), responde:
+      {"intencion": "no_soportado", "respuesta": "..."} donde "respuesta" es un mensaje breve,
+      amable y en español, explicando que no puedes ayudar con eso, y recordando brevemente
+      qué sí puedes hacer (registrar gastos e ingresos por texto o foto, generar resúmenes,
+      calcular porcentajes/balance, y exportar a Excel).
+
+    Devuelve SOLO el JSON correspondiente.
+    """
+    contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
+    resultado = await generar_con_reintentos(contenido)
+    if not isinstance(resultado, dict) or "intencion" not in resultado:
+        return {"intencion": "gasto"}  # último recurso: comportamiento anterior
+    return resultado
+
 async def descargar_imagen_whatsapp(media_id: str) -> Image.Image:
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
     async with httpx.AsyncClient() as client_http:
@@ -189,14 +219,32 @@ async def descargar_imagen_whatsapp(media_id: str) -> Image.Image:
         respuesta_imagen = await client_http.get(url_descarga, headers=headers)
         return Image.open(io.BytesIO(respuesta_imagen.content))
 
-async def procesar_recibo_con_ia(imagen: Image.Image):
+async def procesar_imagen_transacciones_con_ia(imagen: Image.Image):
     prompt_sistema = f"""
-    Eres un asistente financiero. Extrae el total gastado de esta imagen.
-    Categorías: [{CATEGORIAS_TEXTO}].
+    Eres un asistente financiero. La imagen puede ser UN SOLO recibo/ticket de compra,
+    o una captura de pantalla de una app bancaria con VARIOS movimientos/transacciones.
+
+    Identifica TODAS las transacciones visibles (una o varias). Para cada una determina:
+    - "tipo": "Gasto" si el monto sale de la cuenta (aparece con signo negativo "-", o es una
+      compra/pago). "Ingreso" si el monto entra a la cuenta (aparece con signo positivo "+",
+      o en color verde).
+    - "monto": el valor absoluto del monto, SIN el signo.
+    - "categoria": si tipo es "Gasto", elige una de [{CATEGORIAS_TEXTO}].
+      Si tipo es "Ingreso", elige una de [{CATEGORIAS_INGRESO_TEXTO}].
+    - "descripcion": el nombre del comercio, persona o concepto, tal como aparece.
+
     {ACLARACION_CATEGORIAS}
-    Devuelve SOLO un JSON: {{"monto": 0.0, "categoria": "Categoría", "descripcion": "Nombre comercio"}}
+    Ignora movimientos que sean transferencias internas entre cuentas propias del mismo banco
+    (ej. "Move", "Exchange", "Conversión") si logras identificarlos como tales.
+
+    Devuelve SOLO un JSON con esta estructura exacta:
+    {{"transacciones": [{{"tipo": "Gasto", "monto": 0.0, "categoria": "Categoría", "descripcion": "Descripción"}}]}}
     """
-    return await generar_con_reintentos([prompt_sistema, imagen])
+    resultado = await generar_con_reintentos([prompt_sistema, imagen])
+    transacciones = resultado.get("transacciones") if isinstance(resultado, dict) else None
+    if not transacciones or not isinstance(transacciones, list):
+        return []
+    return transacciones
 
 # --- 3. BASE DE DATOS (SUPABASE) ---
 async def guardar_gasto(numero: str, datos: dict):
@@ -824,6 +872,31 @@ def formatear_confirmacion(datos: dict) -> str:
         f"• 🔄 Tipo: Gasto"
     )
 
+def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
+    total = len(gastos) + len(ingresos)
+    if total == 0:
+        return "⚠️ No identifiqué ninguna transacción en esa imagen. ¿Puedes intentar con una foto más clara?"
+
+    fecha_str, hora_str = formatear_fecha_hora_actual()
+    lineas = [f"✅ {total} transacciones registradas", f"📅 {fecha_str} — 🕐 {hora_str}", ""]
+
+    if gastos:
+        total_gastos = sum(float(g.get("monto", 0)) for g in gastos)
+        lineas.append(f"💸 Gastos ({formatear_monto_corto(total_gastos)}):")
+        for g in gastos:
+            emoji_cat = CATEGORIA_EMOJIS.get(g.get("categoria", "Otros"), "❓")
+            lineas.append(f". {emoji_cat} {g.get('descripcion','')} — {g.get('categoria','')} - {formatear_monto_corto(g.get('monto', 0))}")
+        lineas.append("")
+
+    if ingresos:
+        total_ingresos = sum(float(i.get("monto", 0)) for i in ingresos)
+        lineas.append(f"💰 Ingresos ({formatear_monto_corto(total_ingresos)}):")
+        for i in ingresos:
+            emoji_cat = INGRESO_EMOJIS.get(i.get("categoria", "Otros"), "❓")
+            lineas.append(f". {emoji_cat} {i.get('descripcion','')} — {i.get('categoria','')} - {formatear_monto_corto(i.get('monto', 0))}")
+
+    return "\n".join(lineas).rstrip()
+
 # --- 6. RUTAS DEL WEBHOOK ---
 async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
     try:
@@ -897,22 +970,53 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     await guardar_ingreso(numero_remitente, datos_ingreso)
                 await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion_ingreso(datos_ingreso))
             else:
-                # Es un gasto normal
-                datos = await procesar_gasto_con_ia(texto)
-                print(f"✅ Gasto registrado (Texto): {datos}")
-                if datos.get("categoria") != "Error":
-                    await guardar_gasto(numero_remitente, datos)
-                await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
+                # Ninguna palabra clave coincidió: en vez de asumir que es un gasto,
+                # le preguntamos a Gemini qué quiso decir realmente.
+                clasificacion = await clasificar_mensaje_libre_con_ia(texto)
+                intencion = clasificacion.get("intencion")
 
-        # Procesar fotos de recibos
+                if intencion == "ingreso":
+                    datos_ingreso = await procesar_ingreso_con_ia(texto)
+                    print(f"✅ Ingreso registrado (vía clasificador): {datos_ingreso}")
+                    if datos_ingreso.get("monto"):
+                        await guardar_ingreso(numero_remitente, datos_ingreso)
+                    await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion_ingreso(datos_ingreso))
+
+                elif intencion == "no_soportado":
+                    respuesta = clasificacion.get("respuesta") or (
+                        "🤖 No puedo ayudarte con eso. Puedo registrar tus gastos e ingresos "
+                        "(por texto o foto), generar resúmenes, calcular porcentajes/balance, "
+                        "y exportar tus datos a Excel."
+                    )
+                    print(f"ℹ️ Mensaje no soportado de {numero_remitente}: {texto!r}")
+                    await enviar_mensaje_whatsapp(numero_remitente, respuesta)
+
+                else:
+                    # "gasto" (o clasificación no reconocida, por seguridad)
+                    datos = await procesar_gasto_con_ia(texto)
+                    print(f"✅ Gasto registrado (Texto): {datos}")
+                    if datos.get("categoria") != "Error":
+                        await guardar_gasto(numero_remitente, datos)
+                    await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
+
+        # Procesar fotos (recibo único o lista de transacciones bancarias)
         elif message["type"] == "image":
             media_id = message["image"]["id"]
             imagen = await descargar_imagen_whatsapp(media_id)
-            datos = await procesar_recibo_con_ia(imagen)
-            print(f"✅ Gasto registrado (Foto): {datos}")
-            if datos.get("categoria") != "Error":
-                await guardar_gasto(numero_remitente, datos)
-            await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
+            transacciones = await procesar_imagen_transacciones_con_ia(imagen)
+            print(f"✅ Transacciones detectadas en imagen ({len(transacciones)}): {transacciones}")
+
+            gastos_guardados = []
+            ingresos_guardados = []
+            for t in transacciones:
+                if t.get("tipo") == "Ingreso":
+                    await guardar_ingreso(numero_remitente, t)
+                    ingresos_guardados.append(t)
+                else:
+                    await guardar_gasto(numero_remitente, t)
+                    gastos_guardados.append(t)
+
+            await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion_lote(gastos_guardados, ingresos_guardados))
 
     except Exception as e:
         print(f"⚠️ Error procesando/respondiendo mensaje: {type(e).__name__}: {e}")
