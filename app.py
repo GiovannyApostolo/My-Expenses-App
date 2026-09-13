@@ -50,7 +50,7 @@ CATEGORIAS = [
     "Suscripciones",
     "Vivienda y servicios",
     "Compras",
-    "Salud",
+    "Salud y cuidado personal",
     "Educación",
     "Finanzas",
     "Otros",
@@ -72,7 +72,7 @@ CATEGORIA_EMOJIS = {
     "Suscripciones": "📱",
     "Vivienda y servicios": "🏠",
     "Compras": "🛍️",
-    "Salud": "💊",
+    "Salud y cuidado personal": "💊",
     "Educación": "📚",
     "Finanzas": "💳",
     "Otros": "❓",
@@ -86,6 +86,7 @@ INGRESO_EMOJIS = {
     "Extras": "➕",
     "Regalo": "🎁",
     "Otros": "❓",
+    "Reintegros": "🫰",
 }
 
 def formatear_fecha_hora_actual():
