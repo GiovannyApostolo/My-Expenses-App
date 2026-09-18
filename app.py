@@ -78,7 +78,7 @@ CATEGORIA_EMOJIS = {
     "Vivienda y servicios": "🏠",
     "Compras": "🛍️",
     "Regalos": "🎁",
-    "Mascota" "🐶",
+    "Mascota": "🐶",
     "Salud y cuidado personal": "💊",
     "Educación": "📚",
     "Finanzas": "💳",
