@@ -50,6 +50,7 @@ CATEGORIAS = [
     "Vivienda y servicios",
     "Compras",
     "Salud y cuidado personal",
+    "Regalos"
     "Educación",
     "Finanzas",
     "Hormigas",
@@ -76,6 +77,8 @@ CATEGORIA_EMOJIS = {
     "Suscripciones": "📱",
     "Vivienda y servicios": "🏠",
     "Compras": "🛍️",
+    "Regalos": "🎁",
+    "Mascota" "🐶",
     "Salud y cuidado personal": "💊",
     "Educación": "📚",
     "Finanzas": "💳",
