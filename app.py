@@ -43,40 +43,43 @@ MODELO = "gemini-3.7-flash"
 MODELO_RESPALDO = "gemini-3.6-flash"
 
 CATEGORIAS = [
-    "Restaurantes",
+    "Ocio y Restauración",
     "Supermercado",
     "Transporte",
-    "Ocio",
-    "Tabaco",
     "Suscripciones",
     "Vivienda y servicios",
     "Compras",
     "Salud y cuidado personal",
     "Educación",
     "Finanzas",
+    "Hormigas",
     "Otros",
 ]
 CATEGORIAS_TEXTO = ", ".join(CATEGORIAS)
 ACLARACION_CATEGORIAS = (
-    "Distingue bien entre 'Ocio' y 'Suscripciones': 'Ocio' es entretenimiento puntual o "
-    "streaming de consumo (Netflix, Spotify, cine, conciertos, videojuegos, salidas). "
-    "'Suscripciones' es para herramientas, software o servicios digitales recurrentes que "
-    "NO son de entretenimiento (Google Cloud, iCloud/Apple Cloud, Suno, ChatGPT Plus, "
-    "hosting, dominios, apps de productividad, etc.)."
+    "Distingue bien entre estas categorías que se prestan a confusión:\n"
+    "- 'Ocio y Restauración': comer/beber fuera de casa (restaurantes, bares, cafeterías, "
+    "comida a domicilio) y entretenimiento puntual (cine, conciertos, videojuegos, salidas).\n"
+    "- 'Suscripciones': CUALQUIER pago recurrente/periódico, sea de entretenimiento o no "
+    "(Netflix, Spotify, Tidal, iCloud/Apple Cloud, Google Cloud, ChatGPT Plus, Suno, hosting, "
+    "dominios, gimnasio con cuota mensual, etc.).\n"
+    "- 'Hormigas': gastos pequeños, impulsivos y cotidianos hechos en la calle o al paso "
+    "(un refresco, un café rápido, chicles, prensa, una chocolatina), distintos de una comida "
+    "completa en restaurante (que va en 'Ocio y Restauración') o de la compra grande de "
+    "supermercado."
 )
 
 CATEGORIA_EMOJIS = {
-    "Restaurantes": "🍽️",
+    "Ocio y restauración": "🍽️",
     "Supermercado": "🛒",
-    "Transporte": "🚗",
-    "Ocio": "🎮",
-    "Tabaco": "🚬",
+    "Vehiculo y transporte": "🚗",
     "Suscripciones": "📱",
     "Vivienda y servicios": "🏠",
     "Compras": "🛍️",
     "Salud y cuidado personal": "💊",
     "Educación": "📚",
     "Finanzas": "💳",
+    "Gastos hormigas": "🐜",
     "Otros": "❓",
 }
 
@@ -87,8 +90,8 @@ INGRESO_EMOJIS = {
     "Freelance": "💻",
     "Extras": "➕",
     "Regalo": "🎁",
-    "Reintegro": "🫰",
     "Otros": "❓",
+    "Reintegros": "🤝",
 }
 
 def formatear_fecha_hora_actual():
@@ -397,16 +400,17 @@ PERIODOS = {
 
 # Alias -> nombre exacto de categoría (debe coincidir con CATEGORIAS)
 ALIASES_CATEGORIA = {
-    "restaurantes": "Restaurantes", "restaurante": "Restaurantes",
+    "restaurantes": "Ocio y Restauración", "restaurante": "Ocio y Restauración",
+    "restauracion": "Ocio y Restauración", "ocio": "Ocio y Restauración",
     "supermercado": "Supermercado", "super": "Supermercado",
     "transporte": "Transporte",
-    "ocio": "Ocio",
     "suscripciones": "Suscripciones", "suscripcion": "Suscripciones", "subscripciones": "Suscripciones", "subscripcion": "Suscripciones",
     "vivienda": "Vivienda y servicios", "servicios": "Vivienda y servicios", "alquiler": "Vivienda y servicios",
     "compras": "Compras",
-    "salud": "Salud",
+    "salud": "Salud y cuidado personal", "cuidado personal": "Salud y cuidado personal",
     "educacion": "Educación",
     "finanzas": "Finanzas",
+    "hormigas": "Hormigas", "hormiga": "Hormigas",
     "otros": "Otros",
 }
 
