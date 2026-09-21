@@ -95,7 +95,7 @@ CATEGORIA_EMOJIS = {
 CATEGORIAS_INGRESO = ["Botin principal", "Contratos de mercenario", "Recompensas extra", "Regalo", "Miscelánea"]
 CATEGORIAS_INGRESO_TEXTO = ", ".join(CATEGORIAS_INGRESO)
 INGRESO_EMOJIS = {
-    "Botin principal": "🪓",
+    "Botin principal": "🪎",
     "Contratos de mercenario": "⚔️",
     "Recompensas extra": "✨",
     "Ofrenda de aliados": "💎",
@@ -215,7 +215,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
       identifica el gasto original", "categoria_nueva": "una de [{CATEGORIAS_TEXTO}]"}}
     - Si es cualquier otra cosa (saludo, pregunta general, petición fuera del alcance del bot,
       o un mensaje ambiguo sin relación clara a lo anterior), responde:
-      {{"intencion": "no_soportado", "🧌", "respuesta": "..."}} donde "respuesta" es un mensaje breve,
+      {{"intencion": "no_soportado", "🧌" "respuesta": "..."}} donde "respuesta" es un mensaje breve,
       amable y en español, explicando que no puedes ayudar con eso, y recordando brevemente
       qué sí puedes hacer (registrar gastos e ingresos por texto o foto, corregir categorías,
       generar resúmenes, calcular porcentajes/balance, y exportar a Excel).
@@ -674,7 +674,7 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
     emoji_categoria = INGRESO_EMOJIS.get(categoria, "❓")
     return (
         "✅ Transacción Registrada\n"
-        f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
+        f"• 🪙 Monto: {formatear_monto(datos.get('monto'))}\n"
         f"• 🔖 Categoría: {emoji_categoria} {categoria}\n"
         f"• 🪶 Descripción: {datos.get('descripcion')}\n"
         f"• 📅 Fecha: {fecha_str}\n"
@@ -932,7 +932,7 @@ def formatear_confirmacion(datos: dict) -> str:
     emoji_categoria = CATEGORIA_EMOJIS.get(categoria, "❓")
     return (
         "✅ Transacción Registrada\n"
-        f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
+        f"• 🪙 Monto: {formatear_monto(datos.get('monto'))}\n"
         f"• 🔖 Categoría: {emoji_categoria} {categoria}\n"
         f"• 🪶 Descripción: {datos.get('descripcion')}\n"
         f"• 📅 Fecha: {fecha_str}\n"
