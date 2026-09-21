@@ -206,7 +206,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     Analiza el mensaje del usuario:
     - Si describe un GASTO real (algo que compró, pagó o gastó, con o sin monto explícito),
       responde: {{"intencion": "gasto"}}
-    - Si describe un INGRESO real (dinero que recibió: sueldo, freelance, regalo, venta, etc.),
+    - Si describe un INGRESO real (dinero que recibió: sueldo, freelance, regalo, venta, reintegro, etc.),
       responde: {{"intencion": "ingreso"}}
     - Si pide CAMBIAR/CORREGIR la categoría de un gasto que ya registró antes (identificándolo
       por su descripción o nombre, ej. "pon el gasto de Jennifer González en Vivienda"),
@@ -408,17 +408,20 @@ PERIODOS = {
 
 # Alias -> nombre exacto de categoría (debe coincidir con CATEGORIAS)
 ALIASES_CATEGORIA = {
-    "restaurantes": "Ocio y Restauración", "restaurante": "Ocio y Restauración",
-    "restauracion": "Ocio y Restauración", "ocio": "Ocio y Restauración",
+    "restaurantes": "Ocio y restauración", "restaurante": "Ocio y Restauración",
+    "restauracion": "Ocio y restauración", "ocio": "Ocio y restauración",
     "supermercado": "Supermercado", "super": "Supermercado",
-    "transporte": "Transporte",
+    "transporte": "Vehiculo y transporte", "transporte", "gasolina",
     "suscripciones": "Suscripciones", "suscripcion": "Suscripciones", "subscripciones": "Suscripciones", "subscripcion": "Suscripciones",
     "vivienda": "Vivienda y servicios", "servicios": "Vivienda y servicios", "alquiler": "Vivienda y servicios",
     "compras": "Compras",
+    "regalos": "Regalo", "regalo", "cumpleanos",
+    "mascota": "perro", "conejo", "gato",
     "salud": "Salud y cuidado personal", "cuidado personal": "Salud y cuidado personal",
     "educacion": "Educación",
     "finanzas": "Finanzas",
-    "hormigas": "Hormigas", "hormiga": "Hormigas",
+    "hormigas": "Gastos hormiga", "hormiga": "Hormigas",
+    "tabaco": "tabaco", "cigarros",
     "otros": "Otros",
 }
 
