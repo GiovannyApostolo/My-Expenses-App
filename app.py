@@ -43,56 +43,56 @@ MODELO = "gemini-3.7-flash"
 MODELO_RESPALDO = "gemini-3.6-flash"
 
 CATEGORIAS = [
-    "Ocio y restauración",
-    "Supermercado",
-    "Vehiculo y transporte",
-    "Suscripciones",
-    "Vivienda y servicios",
-    "Compras",
-    "Regalos",
+    "Taberna y entretenimiento",
+    "Comida y provisiones",
+    "Movilidad y monturas",
+    "Servicios Activos",
+    "Refugio y suministros",
+    "Adquisiciones",
+    "Ofrendas",
     "Mascota",
-    "Salud y cuidado personal",
-    "Educación",
-    "Finanzas",
-    "Gastos hormiga",
-    "Tabaco",
-    "Otros",
+    "Salud y bienestar",
+    "Conocimiento",
+    "Tributos y finanzas",
+    "Fugas de Oro",
+    "Vicios",
+    "Miscelánea",
 ]
 CATEGORIAS_TEXTO = ", ".join(CATEGORIAS)
 ACLARACION_CATEGORIAS = (
     "Distingue bien entre estas categorías que se prestan a confusión:\n"
-    "- 'Ocio y restauración': comer/beber fuera de casa (restaurantes, bares, cafeterías, "
+    "- 'Taberna y entretenimiento': comer/beber fuera de casa (restaurantes, bares, cafeterías, "
     "comida a domicilio) y entretenimiento puntual (cine, conciertos, videojuegos, salidas).\n"
-    "- 'Suscripciones': CUALQUIER pago recurrente/periódico, sea de entretenimiento o no "
+    "- 'Servicios Activos': CUALQUIER pago recurrente/periódico, sea de entretenimiento o no "
     "(Netflix, Spotify, Tidal, iCloud/Apple Cloud, Google Cloud, ChatGPT Plus, Suno, hosting, "
     "dominios, gimnasio con cuota mensual, etc.).\n"
-    "- 'Gastos hormiga': gastos pequeños, impulsivos y cotidianos hechos en la calle o al paso "
+    "- 'Fugas de Oro': gastos pequeños, impulsivos y cotidianos hechos en la calle o al paso "
     "(un refresco, un café rápido, chicles, prensa, una chocolatina), distintos de una comida "
-    "completa en restaurante (que va en 'Ocio y restauración') o de la compra grande de "
+    "completa en restaurante (que va en 'Taberna y entretenimiento') o de la compra grande de "
     "supermercado.\n"
-    "_ 'Tabaco': unicamente gastos en tabaco y cigarros.\n"
-    "- 'Regalos': regalo para otras personas (cumpleanos, navidad, aniversarios, etc.), "
-    "distintos a otro tipo de compras (que va en 'Compras') "
+    "_ 'Vicios': unicamente gastos en tabaco y cigarros.\n"
+    "- 'Ofrendas': regalo para otras personas (cumpleanos, navidad, aniversarios, etc.), "
+    "distintos a otro tipo de compras (que va en 'Adquisiciones') "
 )
 
 CATEGORIA_EMOJIS = {
-    "Ocio y restauración": "🎪",
-    "Supermercado": "🥖",
-    "Vehiculo y transporte": "🐫",
-    "Suscripciones": "🔮",
-    "Vivienda y servicios": "🏰",
-    "Compras": "🏺",
-    "Regalos": "💎",
+    "Taberna y entretenimiento": "🎪",
+    "Comida y provisiones": "🥖",
+    "Movilidad y monturas": "🐫",
+    "Servicios Activos": "🔮",
+    "Refugio y suministros": "🏰",
+    "Adquisiciones": "🏺",
+    "Ofrendas": "💎",
     "Mascota": "🐴",
-    "Salud y cuidado personal": "🍵",
-    "Educación": "📖",
-    "Finanzas": "🪙",
-    "Gastos hormiga": "🐜",
-    "Tabaco": "🍂",
-    "Otros": "❓",
+    "Salud y bienestar": "🍵",
+    "Conocimiento": "📖",
+    "Tributos y finanzas": "🪙",
+    "Fugas de Oro": "🐜",
+    "Vicios": "🍂",
+    "Miscelánea": "❓",
 }
 
-CATEGORIAS_INGRESO = ["Botin principal", "Contratos de mercenario", "Recompensas extra", "Regalo", "Otros"]
+CATEGORIAS_INGRESO = ["Botin principal", "Contratos de mercenario", "Recompensas extra", "Regalo", "Miscelánea"]
 CATEGORIAS_INGRESO_TEXTO = ", ".join(CATEGORIAS_INGRESO)
 INGRESO_EMOJIS = {
     "Botin principal": "🪓",
@@ -364,7 +364,7 @@ async def guardar_ingreso(numero: str, datos: dict):
     payload = {
         "numero": numero,
         "monto": datos.get("monto", 0.0),
-        "categoria": datos.get("categoria", "Otros"),
+        "categoria": datos.get("categoria", "Miscelánea"),
         "descripcion": datos.get("descripcion", ""),
     }
     respuesta = await request_con_reintentos("POST", url, headers, json_payload=payload)
@@ -409,20 +409,20 @@ PERIODOS = {
 
 # Alias -> nombre exacto de categoría (debe coincidir con CATEGORIAS)
 ALIASES_CATEGORIA = {
-    "restaurantes": "Ocio y restauración", "restaurante": "Ocio y restauración",
-    "restauracion": "Ocio y restauración", "ocio": "Ocio y restauración",
-    "supermercado": "Supermercado", "super": "Supermercado",
-    "transporte": "Vehiculo y transporte", "vehiculo": "Vehiculo y transporte", "gasolina": "Vehiculo y transporte",
-    "suscripciones": "Suscripciones", "suscripcion": "Suscripciones", "subscripciones": "Suscripciones", "subscripcion": "Suscripciones",
-    "vivienda": "Vivienda y servicios", "servicios": "Vivienda y servicios", "alquiler": "Vivienda y servicios",
-    "compras": "Compras",
-    "regalos": "Regalos", "regalo": "Regalos", "cumpleanos": "Regalos",
-    "salud": "Salud y cuidado personal", "cuidado personal": "Salud y cuidado personal",
-    "educacion": "Educación",
-    "finanzas": "Finanzas",
-    "hormigas": "Gastos hormiga", "hormiga": "Gastos hormiga",
-    "tabaco": "Tabaco", "cigarros": "Tabaco",
-    "otros": "Otros",
+    "restaurantes": "Taberna y entretenimiento", "restaurante": "Taberna y entretenimiento",
+    "restauracion": "Taberna y entretenimiento", "ocio": "Taberna y entretenimiento",
+    "supermercado": "Comida y provisiones", "super": "Comida y provisiones",
+    "transporte": "Movilidad y monturas", "vehiculo": "Movilidad y monturas", "gasolina": "Movilidad y monturas",
+    "suscripciones": "Servicios Activos", "suscripcion": "Servicios Activos", "subscripciones": "Servicios Activos", "subscripcion": "Servicios Activos",
+    "vivienda": "Refugio y suministros", "servicios": "Refugio y suministros", "alquiler": "Refugio y suministros",
+    "compras": "Adquisiciones",
+    "regalos": "Ofrendas", "regalo": "Ofrendas", "cumpleanos": "Ofrendas",
+    "salud": "Salud y bienestar", "cuidado personal": "Salud y bienestar",
+    "educacion": "Conocimiento",
+    "finanzas": "Tributos y finanzas",
+    "hormigas": "Fugas de Oro", "hormiga": "Fugas de Oro",
+    "tabaco": "Vicios", "cigarros": "Vicios",
+    "otros": "Miscelánea",
 }
 
 def _coincide_periodo(texto_norm: str, palabras_clave: list) -> bool:
@@ -549,7 +549,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
     if gastos:
         por_categoria = {}
         for g in gastos:
-            por_categoria.setdefault(g.get("categoria", "Otros"), []).append(g)
+            por_categoria.setdefault(g.get("categoria", "Miscelánea"), []).append(g)
         lineas.append("")
         lineas.append("Por categoría:")
         for cat, lista in sorted(por_categoria.items(), key=lambda kv: -sum(float(x["monto"]) for x in kv[1])):
@@ -565,7 +565,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
     if ingresos:
         por_categoria_ing = {}
         for i in ingresos:
-            cat = i.get("categoria", "Otros")
+            cat = i.get("categoria", "Miscelánea")
             por_categoria_ing[cat] = por_categoria_ing.get(cat, 0.0) + float(i["monto"])
         lineas.append("")
         lineas.append("Por categoría:")
@@ -605,7 +605,7 @@ def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
     # Sin categoría específica: desglose de porcentaje por cada categoría
     por_categoria = {}
     for g in gastos:
-        cat = g.get("categoria", "Otros")
+        cat = g.get("categoria", "Miscelánea")
         por_categoria[cat] = por_categoria.get(cat, 0.0) + float(g["monto"])
 
     lineas = [f"📜 Distribución de gastos {etiqueta_periodo}", "", f"🪎 Total: {total:.2f}", ""]
@@ -631,7 +631,7 @@ def generar_texto_porcentaje_ingresos(periodo: str, gastos: list, total_ingresos
 
     por_categoria = {}
     for g in gastos:
-        cat = g.get("categoria", "Otros")
+        cat = g.get("categoria", "Miscelánea")
         por_categoria[cat] = por_categoria.get(cat, 0.0) + float(g["monto"])
 
     total_gastos = sum(por_categoria.values())
@@ -670,7 +670,7 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
     if not datos.get("monto"):
         return "⚠️ No pude procesar ese ingreso. ¿Puedes intentar describirlo de otra forma?"
     fecha_str, hora_str = formatear_fecha_hora_actual()
-    categoria = datos.get("categoria", "Otros")
+    categoria = datos.get("categoria", "Miscelánea")
     emoji_categoria = INGRESO_EMOJIS.get(categoria, "❓")
     return (
         "✅ Transacción Registrada\n"
@@ -796,7 +796,7 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
 
     por_categoria_gasto = {}
     for g in gastos:
-        cat = g.get("categoria", "Otros")
+        cat = g.get("categoria", "Miscelánea")
         por_categoria_gasto[cat] = por_categoria_gasto.get(cat, 0.0) + float(g.get("monto", 0))
 
     # --- Sección 1: Detalle de ingresos ---
@@ -809,7 +809,7 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
         except Exception:
             fecha_str = i.get("fecha", "")
         ws.cell(row=fila, column=1, value=fecha_str)
-        ws.cell(row=fila, column=2, value=i.get("categoria", "Otros"))
+        ws.cell(row=fila, column=2, value=i.get("categoria", "Miscelánea"))
         ws.cell(row=fila, column=3, value=float(i.get("monto", 0)))
         ws.cell(row=fila, column=4, value=i.get("descripcion", ""))
         fila += 1
@@ -826,7 +826,7 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
         except Exception:
             fecha_str = g.get("fecha", "")
         ws.cell(row=fila, column=1, value=fecha_str)
-        ws.cell(row=fila, column=2, value=g.get("categoria", "Otros"))
+        ws.cell(row=fila, column=2, value=g.get("categoria", "Miscelánea"))
         ws.cell(row=fila, column=3, value=float(g.get("monto", 0)))
         ws.cell(row=fila, column=4, value=g.get("descripcion", ""))
         fila += 1
@@ -928,7 +928,7 @@ def formatear_confirmacion(datos: dict) -> str:
     if datos.get("categoria") == "Error":
         return "⚠️ No pude procesar ese gasto. ¿Puedes intentar describirlo de otra forma?"
     fecha_str, hora_str = formatear_fecha_hora_actual()
-    categoria = datos.get("categoria", "Otros")
+    categoria = datos.get("categoria", "Miscelánea")
     emoji_categoria = CATEGORIA_EMOJIS.get(categoria, "❓")
     return (
         "✅ Transacción Registrada\n"
@@ -952,7 +952,7 @@ def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
         total_gastos = sum(float(g.get("monto", 0)) for g in gastos)
         lineas.append(f"🪽 Gastos ({formatear_monto_corto(total_gastos)}):")
         for g in gastos:
-            emoji_cat = CATEGORIA_EMOJIS.get(g.get("categoria", "Otros"), "❓")
+            emoji_cat = CATEGORIA_EMOJIS.get(g.get("categoria", "Miscelánea"), "❓")
             lineas.append(f". {emoji_cat} {g.get('descripcion','')} — {g.get('categoria','')} - {formatear_monto_corto(g.get('monto', 0))}")
         lineas.append("")
 
@@ -960,7 +960,7 @@ def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
         total_ingresos = sum(float(i.get("monto", 0)) for i in ingresos)
         lineas.append(f"🪎 Ingresos ({formatear_monto_corto(total_ingresos)}):")
         for i in ingresos:
-            emoji_cat = INGRESO_EMOJIS.get(i.get("categoria", "Otros"), "❓")
+            emoji_cat = INGRESO_EMOJIS.get(i.get("categoria", "Miscelánea"), "❓")
             lineas.append(f". {emoji_cat} {i.get('descripcion','')} — {i.get('categoria','')} - {formatear_monto_corto(i.get('monto', 0))}")
 
     return "\n".join(lineas).rstrip()
@@ -1055,7 +1055,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     categoria_nueva = resolver_categoria(clasificacion.get("categoria_nueva", ""), CATEGORIAS)
 
                     if not descripcion_buscada or not categoria_nueva:
-                        await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No entendí bien qué gasto o categoría quieres cambiar. ¿Puedes reformularlo? (ej. \"pon el gasto de Jennifer en Vivienda y servicios\")")
+                        await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No entendí bien qué gasto o categoría quieres cambiar. ¿Puedes reformularlo? (ej. \"pon el gasto de Jennifer en Refugio y suministros\")")
                     else:
                         candidatos = await buscar_gastos_por_descripcion(numero_remitente, descripcion_buscada)
                         if not candidatos:
