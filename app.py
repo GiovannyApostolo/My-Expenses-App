@@ -408,20 +408,19 @@ PERIODOS = {
 
 # Alias -> nombre exacto de categoría (debe coincidir con CATEGORIAS)
 ALIASES_CATEGORIA = {
-    "restaurantes": "Ocio y restauración", "restaurante": "Ocio y Restauración",
+    "restaurantes": "Ocio y restauración", "restaurante": "Ocio y restauración",
     "restauracion": "Ocio y restauración", "ocio": "Ocio y restauración",
     "supermercado": "Supermercado", "super": "Supermercado",
-    "transporte": "Vehiculo y transporte", "transporte", "gasolina",
+    "transporte": "Vehiculo y transporte", "vehiculo": "Vehiculo y transporte", "gasolina": "Vehiculo y transporte",
     "suscripciones": "Suscripciones", "suscripcion": "Suscripciones", "subscripciones": "Suscripciones", "subscripcion": "Suscripciones",
     "vivienda": "Vivienda y servicios", "servicios": "Vivienda y servicios", "alquiler": "Vivienda y servicios",
     "compras": "Compras",
-    "regalos": "Regalo", "regalo", "cumpleanos",
-    "mascota": "perro", "conejo", "gato",
+    "regalos": "Regalos", "regalo": "Regalos", "cumpleanos": "Regalos",
     "salud": "Salud y cuidado personal", "cuidado personal": "Salud y cuidado personal",
     "educacion": "Educación",
     "finanzas": "Finanzas",
-    "hormigas": "Gastos hormiga", "hormiga": "Hormigas",
-    "tabaco": "tabaco", "cigarros",
+    "hormigas": "Gastos hormiga", "hormiga": "Gastos hormiga",
+    "tabaco": "Tabaco", "cigarros": "Tabaco",
     "otros": "Otros",
 }
 
