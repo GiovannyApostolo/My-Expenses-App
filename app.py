@@ -215,7 +215,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
       identifica el gasto original", "categoria_nueva": "una de [{CATEGORIAS_TEXTO}]"}}
     - Si es cualquier otra cosa (saludo, pregunta general, petición fuera del alcance del bot,
       o un mensaje ambiguo sin relación clara a lo anterior), responde:
-      {{"intencion": "no_soportado", "respuesta": "..."}} donde "respuesta" es un mensaje breve,
+      {{"intencion": "no_soportado", "🧌", "respuesta": "..."}} donde "respuesta" es un mensaje breve,
       amable y en español, explicando que no puedes ayudar con eso, y recordando brevemente
       qué sí puedes hacer (registrar gastos e ingresos por texto o foto, corregir categorías,
       generar resúmenes, calcular porcentajes/balance, y exportar a Excel).
