@@ -43,17 +43,17 @@ MODELO = "gemini-3.7-flash"
 MODELO_RESPALDO = "gemini-3.6-flash"
 
 CATEGORIAS = [
-    "Ocio y Restauración",
+    "Ocio y restauración",
     "Supermercado",
-    "Transporte",
+    "Vehiculo y transporte",
     "Suscripciones",
     "Vivienda y servicios",
     "Compras",
+    "Regalos",
     "Salud y cuidado personal",
-    "Regalos"
     "Educación",
     "Finanzas",
-    "Hormigas",
+    "Gastos hormiga",
     "Otros",
 ]
 CATEGORIAS_TEXTO = ", ".join(CATEGORIAS)
@@ -64,14 +64,14 @@ ACLARACION_CATEGORIAS = (
     "- 'Suscripciones': CUALQUIER pago recurrente/periódico, sea de entretenimiento o no "
     "(Netflix, Spotify, Tidal, iCloud/Apple Cloud, Google Cloud, ChatGPT Plus, Suno, hosting, "
     "dominios, gimnasio con cuota mensual, etc.).\n"
-    "- 'Hormigas': gastos pequeños, impulsivos y cotidianos hechos en la calle o al paso "
+    "- 'Gastos hormiga': gastos pequeños, impulsivos y cotidianos hechos en la calle o al paso "
     "(un refresco, un café rápido, chicles, prensa, una chocolatina), distintos de una comida "
     "completa en restaurante (que va en 'Ocio y restauración') o de la compra grande de "
     "supermercado."
 )
 
 CATEGORIA_EMOJIS = {
-    "Ocio y restauración": "🍽️",
+    "Ocio y restauración": "🏖️",
     "Supermercado": "🛒",
     "Vehiculo y transporte": "🚗",
     "Suscripciones": "📱",
@@ -82,7 +82,7 @@ CATEGORIA_EMOJIS = {
     "Salud y cuidado personal": "💊",
     "Educación": "📚",
     "Finanzas": "💳",
-    "Gastos hormigas": "🐜",
+    "Gastos hormiga": "🐜",
     "Otros": "❓",
 }
 
