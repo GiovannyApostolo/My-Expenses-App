@@ -91,10 +91,10 @@ CATEGORIA_EMOJIS = {
     "Otros": "❓",
 }
 
-CATEGORIAS_INGRESO = ["Sueldo", "Freelance", "Extras", "Regalo", "Otros"]
+CATEGORIAS_INGRESO = ["Salario", "Freelance", "Extras", "Regalo", "Otros"]
 CATEGORIAS_INGRESO_TEXTO = ", ".join(CATEGORIAS_INGRESO)
 INGRESO_EMOJIS = {
-    "Jornal": "🧙🏼‍♂️",
+    "Salario": "🧙🏼‍♂️",
     "Freelance": "⚔️",
     "Extras": "🎣",
     "Regalo": "💎",
@@ -206,7 +206,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     Analiza el mensaje del usuario:
     - Si describe un GASTO real (algo que compró, pagó o gastó, con o sin monto explícito),
       responde: {{"intencion": "gasto"}}
-    - Si describe un INGRESO real (dinero que recibió: sueldo, freelance, regalo, venta, reintegro, etc.),
+    - Si describe un INGRESO real (dinero que recibió: salario, freelance, regalo, venta, reintegro, etc.),
       responde: {{"intencion": "ingreso"}}
     - Si pide CAMBIAR/CORREGIR la categoría de un gasto que ya registró antes (identificándolo
       por su descripción o nombre, ej. "pon el gasto de Jennifer González en Vivienda"),
@@ -214,7 +214,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
       identifica el gasto original", "categoria_nueva": "una de [{CATEGORIAS_TEXTO}]"}}
     - Si es cualquier otra cosa (saludo, pregunta general, petición fuera del alcance del bot,
       o un mensaje ambiguo sin relación clara a lo anterior), responde:
-      {{"intencion": "no_soportado", "respuesta": "..."}} donde "respuesta" es un mensaje breve,
+      {{"intencion": "no_soportado", 🧌, "respuesta": "..."}} donde "respuesta" es un mensaje breve,
       amable y en español, explicando que no puedes ayudar con eso, y recordando brevemente
       qué sí puedes hacer (registrar gastos e ingresos por texto o foto, corregir categorías,
       generar resúmenes, calcular porcentajes/balance, y exportar a Excel).
@@ -1030,7 +1030,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 print(f"📜 Balance {periodo_bal} generado para {numero_remitente}")
                 await enviar_mensaje_whatsapp(numero_remitente, mensaje_balance)
             elif detectar_solicitud_ingreso(texto):
-                # El usuario registró un ingreso (ej. "ingreso de 1500 sueldo")
+                # El usuario registró un ingreso (ej. "ingreso de 1500 Salario")
                 datos_ingreso = await procesar_ingreso_con_ia(texto)
                 print(f"✅ Ingreso registrado: {datos_ingreso}")
                 if datos_ingreso.get("monto"):
@@ -1077,7 +1077,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
 
                 elif intencion == "no_soportado":
                     respuesta = clasificacion.get("respuesta") or (
-                        "🐲 No puedo ayudarte con eso. Puedo registrar tus gastos e ingresos "
+                        "🧌 No puedo ayudarte con eso. Puedo registrar tus gastos e ingresos "
                         "(por texto o foto), generar resúmenes, calcular porcentajes/balance, "
                         "y exportar tus datos a Excel."
                     )
