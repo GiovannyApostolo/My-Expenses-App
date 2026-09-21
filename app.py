@@ -215,7 +215,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
       identifica el gasto original", "categoria_nueva": "una de [{CATEGORIAS_TEXTO}]"}}
     - Si es cualquier otra cosa (saludo, pregunta general, petición fuera del alcance del bot,
       o un mensaje ambiguo sin relación clara a lo anterior), responde:
-      {{"intencion": "no_soportado", "🧌" "respuesta": "..."}} donde "respuesta" es un mensaje breve,
+     "🧌" {{"intencion": "no_soportado", "respuesta": "..."}} donde "respuesta" es un mensaje breve,
       amable y en español, explicando que no puedes ayudar con eso, y recordando brevemente
       qué sí puedes hacer (registrar gastos e ingresos por texto o foto, corregir categorías,
       generar resúmenes, calcular porcentajes/balance, y exportar a Excel).
@@ -640,7 +640,7 @@ def generar_texto_porcentaje_ingresos(periodo: str, gastos: list, total_ingresos
     lineas = [f"📜 Gastos {etiqueta_periodo} sobre tus ingresos", "", f"🪎 Ingresos: {total_ingresos:.2f}", ""]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total_ingresos) * 100
-        lineas.append(f"  🔖 {cat}: {porcentaje:.1f}% ({monto:.2f})")
+        lineas.append(f"  🏷️ {cat}: {porcentaje:.1f}% ({monto:.2f})")
     porcentaje_ahorro = (ahorro / total_ingresos) * 100
     lineas.append("")
     lineas.append(f"  🛡️ Restante/Ahorro: {porcentaje_ahorro:.1f}% ({ahorro:.2f})")
@@ -674,9 +674,9 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
     emoji_categoria = INGRESO_EMOJIS.get(categoria, "❓")
     return (
         "✅ Transacción Registrada\n"
-        f"• 🪙 Monto: {formatear_monto(datos.get('monto'))}\n"
-        f"• 🔖 Categoría: {emoji_categoria} {categoria}\n"
-        f"• 🪶 Descripción: {datos.get('descripcion')}\n"
+        f"• 💰 Monto: {formatear_monto(datos.get('monto'))}\n"
+        f"• 🏷️ Categoría: {emoji_categoria} {categoria}\n"
+        f"• 📝 Descripción: {datos.get('descripcion')}\n"
         f"• 📅 Fecha: {fecha_str}\n"
         f"• ⌛️ Hora: {hora_str}\n"
         f"• 🔄 Tipo: Ingreso"
@@ -932,9 +932,9 @@ def formatear_confirmacion(datos: dict) -> str:
     emoji_categoria = CATEGORIA_EMOJIS.get(categoria, "❓")
     return (
         "✅ Transacción Registrada\n"
-        f"• 🪙 Monto: {formatear_monto(datos.get('monto'))}\n"
-        f"• 🔖 Categoría: {emoji_categoria} {categoria}\n"
-        f"• 🪶 Descripción: {datos.get('descripcion')}\n"
+        f"• 💰 Monto: {formatear_monto(datos.get('monto'))}\n"
+        f"• 🏷️ Categoría: {emoji_categoria} {categoria}\n"
+        f"• 📝 Descripción: {datos.get('descripcion')}\n"
         f"• 📅 Fecha: {fecha_str}\n"
         f"• ⌛️ Hora: {hora_str}\n"
         f"• 🔄 Tipo: Gasto"
@@ -1064,7 +1064,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                             gasto = candidatos[0]  # el más reciente
                             ok = await actualizar_categoria_gasto(gasto["id"], categoria_nueva)
                             emoji_cat = CATEGORIA_EMOJIS.get(categoria_nueva, "❓")
-                            print(f"🪶 Corrección de categoría: '{gasto.get('descripcion')}' -> {categoria_nueva} ({numero_remitente})")
+                            print(f"📝 Corrección de categoría: '{gasto.get('descripcion')}' -> {categoria_nueva} ({numero_remitente})")
                             if ok:
                                 extra = f"\n\n(Había {len(candidatos) - 1} coincidencia(s) más sin modificar; sé más específico si quieres cambiar otra)" if len(candidatos) > 1 else ""
                                 await enviar_mensaje_whatsapp(
