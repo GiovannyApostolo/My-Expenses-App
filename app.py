@@ -652,7 +652,7 @@ def generar_texto_balance(periodo: str, total_ingresos: float, total_gastos: flo
     balance = total_ingresos - total_gastos
 
     lineas = [
-        f"💼 Balance {etiqueta_periodo}",
+        f"⚖️ Balance {etiqueta_periodo}",
         "",
         f"🪎 Ingresos: {total_ingresos:.2f}",
         f"🪽 Gastos: {total_gastos:.2f}",
@@ -1028,7 +1028,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 total_gastos = sum(float(g["monto"]) for g in gastos)
                 total_ingresos = sum(float(i["monto"]) for i in ingresos)
                 mensaje_balance = generar_texto_balance(periodo_bal, total_ingresos, total_gastos)
-                print(f"💼 Balance {periodo_bal} generado para {numero_remitente}")
+                print(f"⚖️ Balance {periodo_bal} generado para {numero_remitente}")
                 await enviar_mensaje_whatsapp(numero_remitente, mensaje_balance)
             elif detectar_solicitud_ingreso(texto):
                 # El usuario registró un ingreso (ej. "ingreso de 1500 sueldo")
