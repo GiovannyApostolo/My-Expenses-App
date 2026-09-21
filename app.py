@@ -949,7 +949,7 @@ def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
 
     if gastos:
         total_gastos = sum(float(g.get("monto", 0)) for g in gastos)
-        lineas.append(f"💸 Gastos ({formatear_monto_corto(total_gastos)}):")
+        lineas.append(f"🪄 Gastos ({formatear_monto_corto(total_gastos)}):")
         for g in gastos:
             emoji_cat = CATEGORIA_EMOJIS.get(g.get("categoria", "Otros"), "❓")
             lineas.append(f". {emoji_cat} {g.get('descripcion','')} — {g.get('categoria','')} - {formatear_monto_corto(g.get('monto', 0))}")
@@ -978,7 +978,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 desde, hasta, nombre_archivo_base, etiqueta_caption = preparar_exportacion(texto)
                 gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
                 ingresos = [] if categoria else await obtener_ingresos(numero_remitente, desde, hasta)
-                print(f"📤 Exportación '{nombre_archivo_base}'{' / ' + categoria if categoria else ''} solicitada por {numero_remitente} ({len(gastos)} gastos, {len(ingresos)} ingresos)")
+                print(f"📜 Exportación '{nombre_archivo_base}'{' / ' + categoria if categoria else ''} solicitada por {numero_remitente} ({len(gastos)} gastos, {len(ingresos)} ingresos)")
 
                 if not gastos and not ingresos:
                     await enviar_mensaje_whatsapp(numero_remitente, f"No tienes gastos ni ingresos registrados en {etiqueta_caption} para exportar.")
@@ -987,7 +987,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     nombre_archivo = f"{nombre_archivo_base}.xlsx"
                     media_id = await subir_documento_whatsapp(contenido_excel, nombre_archivo)
                     if media_id:
-                        caption = f"📤 Gastos — {etiqueta_caption} ({len(gastos)} registros)"
+                        caption = f"📜 Gastos — {etiqueta_caption} ({len(gastos)} registros)"
                         await enviar_documento_whatsapp(numero_remitente, media_id, nombre_archivo, caption)
                     else:
                         await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No pude generar el archivo de exportación. Intenta de nuevo en un momento.")
@@ -1063,7 +1063,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                             gasto = candidatos[0]  # el más reciente
                             ok = await actualizar_categoria_gasto(gasto["id"], categoria_nueva)
                             emoji_cat = CATEGORIA_EMOJIS.get(categoria_nueva, "❓")
-                            print(f"✏️ Corrección de categoría: '{gasto.get('descripcion')}' -> {categoria_nueva} ({numero_remitente})")
+                            print(f"🪶 Corrección de categoría: '{gasto.get('descripcion')}' -> {categoria_nueva} ({numero_remitente})")
                             if ok:
                                 extra = f"\n\n(Había {len(candidatos) - 1} coincidencia(s) más sin modificar; sé más específico si quieres cambiar otra)" if len(candidatos) > 1 else ""
                                 await enviar_mensaje_whatsapp(
