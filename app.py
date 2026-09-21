@@ -54,6 +54,7 @@ CATEGORIAS = [
     "Educación",
     "Finanzas",
     "Gastos hormiga",
+    "Tabaco
     "Otros",
 ]
 CATEGORIAS_TEXTO = ", ".join(CATEGORIAS)
@@ -67,7 +68,10 @@ ACLARACION_CATEGORIAS = (
     "- 'Gastos hormiga': gastos pequeños, impulsivos y cotidianos hechos en la calle o al paso "
     "(un refresco, un café rápido, chicles, prensa, una chocolatina), distintos de una comida "
     "completa en restaurante (que va en 'Ocio y restauración') o de la compra grande de "
-    "supermercado."
+    "supermercado.\n"
+    "_ 'Tabaco': unicamente gastos en tabaco y cigarros.\n"
+    "- 'Regalos': regalos para otras personas (cumpleanos, navidad, aniversarios, etc.), "
+    "distintos a otro tipo de compras (que va en 'Compras') "
 )
 
 CATEGORIA_EMOJIS = {
@@ -83,6 +87,7 @@ CATEGORIA_EMOJIS = {
     "Educación": "📚",
     "Finanzas": "💳",
     "Gastos hormiga": "🐜",
+    "Tabaco": "🚬",
     "Otros": "❓",
 }
 
