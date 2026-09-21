@@ -84,7 +84,7 @@ CATEGORIA_EMOJIS = {
     "Regalos": "💎",
     "Mascota": "🐴",
     "Salud y cuidado personal": "🍵",
-    "Educación": "📜",
+    "Educación": "📖",
     "Finanzas": "🪙",
     "Gastos hormiga": "🐜",
     "Tabaco": "🍂",
@@ -94,7 +94,7 @@ CATEGORIA_EMOJIS = {
 CATEGORIAS_INGRESO = ["Sueldo", "Freelance", "Extras", "Regalo", "Otros"]
 CATEGORIAS_INGRESO_TEXTO = ", ".join(CATEGORIAS_INGRESO)
 INGRESO_EMOJIS = {
-    "Sueldo": "🧙🏼‍♂️",
+    "Jornal": "🧙🏼‍♂️",
     "Freelance": "⚔️",
     "Extras": "🎣",
     "Regalo": "💎",
@@ -529,7 +529,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
     # --- Informe filtrado por una sola categoría de gasto (sin sección de ingresos/balance) ---
     if categoria:
         emoji_cat = CATEGORIA_EMOJIS.get(categoria, "❓")
-        titulo = f"📊 Resumen de {etiqueta} — {emoji_cat} {categoria}"
+        titulo = f"📜 Resumen de {etiqueta} — {emoji_cat} {categoria}"
         if not gastos:
             return f"{titulo}\n\nNo tienes gastos registrados en este período. 🎊"
         total = sum(float(g["monto"]) for g in gastos)
@@ -539,7 +539,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
         return "\n".join(lineas)
 
     # --- Informe general: gastos por categoría + ingresos por categoría + balance ---
-    titulo = f"📊 Resumen de {etiqueta}"
+    titulo = f"📜 Resumen de {etiqueta}"
     total_gastos = sum(float(g["monto"]) for g in gastos)
     total_ingresos = sum(float(i["monto"]) for i in ingresos)
 
@@ -587,17 +587,17 @@ def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
     etiqueta_periodo = ETIQUETAS_PERIODO.get(periodo, "en el período")
 
     if not gastos:
-        return f"📊 No tienes gastos registrados {etiqueta_periodo}. 🎊"
+        return f"📜 No tienes gastos registrados {etiqueta_periodo}. 🎊"
 
     total = sum(float(g["monto"]) for g in gastos)
     if total == 0:
-        return f"📊 No tienes gastos registrados {etiqueta_periodo}. 🎊"
+        return f"📜 No tienes gastos registrados {etiqueta_periodo}. 🎊"
 
     if categoria:
         monto_categoria = sum(float(g["monto"]) for g in gastos if g.get("categoria") == categoria)
         porcentaje = (monto_categoria / total) * 100
         return (
-            f"📊 {categoria} representa el {porcentaje:.1f}% de tus gastos {etiqueta_periodo}\n"
+            f"📜 {categoria} representa el {porcentaje:.1f}% de tus gastos {etiqueta_periodo}\n"
             f"({monto_categoria:.2f} de {total:.2f} en total)"
         )
 
@@ -607,7 +607,7 @@ def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
         cat = g.get("categoria", "Otros")
         por_categoria[cat] = por_categoria.get(cat, 0.0) + float(g["monto"])
 
-    lineas = [f"📊 Distribución de gastos {etiqueta_periodo}", "", f"🪎 Total: {total:.2f}", ""]
+    lineas = [f"📜 Distribución de gastos {etiqueta_periodo}", "", f"🪎 Total: {total:.2f}", ""]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total) * 100
         lineas.append(f"  🔖 {cat}: {porcentaje:.1f}% ({monto:.2f})")
@@ -624,7 +624,7 @@ def generar_texto_porcentaje_ingresos(periodo: str, gastos: list, total_ingresos
         monto_categoria = sum(float(g["monto"]) for g in gastos if g.get("categoria") == categoria)
         porcentaje = (monto_categoria / total_ingresos) * 100
         return (
-            f"📊 {categoria} representa el {porcentaje:.1f}% de tus ingresos {etiqueta_periodo}\n"
+            f"📜 {categoria} representa el {porcentaje:.1f}% de tus ingresos {etiqueta_periodo}\n"
             f"({monto_categoria:.2f} de {total_ingresos:.2f} de ingresos)"
         )
 
@@ -636,7 +636,7 @@ def generar_texto_porcentaje_ingresos(periodo: str, gastos: list, total_ingresos
     total_gastos = sum(por_categoria.values())
     ahorro = total_ingresos - total_gastos
 
-    lineas = [f"📊 Gastos {etiqueta_periodo} sobre tus ingresos", "", f"🪎 Ingresos: {total_ingresos:.2f}", ""]
+    lineas = [f"📜 Gastos {etiqueta_periodo} sobre tus ingresos", "", f"🪎 Ingresos: {total_ingresos:.2f}", ""]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total_ingresos) * 100
         lineas.append(f"  🔖 {cat}: {porcentaje:.1f}% ({monto:.2f})")
@@ -651,15 +651,15 @@ def generar_texto_balance(periodo: str, total_ingresos: float, total_gastos: flo
     balance = total_ingresos - total_gastos
 
     lineas = [
-        f"🧧 Balance {etiqueta_periodo}",
+        f"🧮 Balance {etiqueta_periodo}",
         "",
         f"🪎 Ingresos: {total_ingresos:.2f}",
         f"🪄 Gastos: {total_gastos:.2f}",
-        f"🧮 Balance: {balance:.2f}",
+        f"🪶 Balance: {balance:.2f}",
     ]
     if total_ingresos > 0:
         pct_gastado = (total_gastos / total_ingresos) * 100
-        lineas.append(f"📊 Has gastado el {pct_gastado:.1f}% de tus ingresos")
+        lineas.append(f"📜 Has gastado el {pct_gastado:.1f}% de tus ingresos")
     else:
         lineas.append("ℹ️ No tienes ingresos registrados en este período.")
 
@@ -1000,7 +1000,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 ingresos = [] if categoria else await obtener_ingresos(numero_remitente, desde, hasta)
                 informe = generar_texto_informe(etiqueta, gastos, ingresos, categoria)
 
-                print(f"📊 Informe '{etiqueta}'{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
+                print(f"📜 Informe '{etiqueta}'{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
                 await enviar_mensaje_whatsapp(numero_remitente, informe)
             elif detectar_solicitud_porcentaje(texto):
                 # El usuario pidió un porcentaje (ej. "qué % de mis gastos/ingresos es ocio")
@@ -1016,7 +1016,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 else:
                     mensaje_pct = generar_texto_porcentaje(periodo_pct, gastos, categoria)
 
-                print(f"📊 Porcentaje {periodo_pct}{' / ' + categoria if categoria else ''} generado para {numero_remitente}")
+                print(f"📜 Porcentaje {periodo_pct}{' / ' + categoria if categoria else ''} generado para {numero_remitente}")
                 await enviar_mensaje_whatsapp(numero_remitente, mensaje_pct)
             elif detectar_solicitud_balance(texto):
                 # El usuario pidió su balance (ingresos - gastos)
@@ -1027,7 +1027,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 total_gastos = sum(float(g["monto"]) for g in gastos)
                 total_ingresos = sum(float(i["monto"]) for i in ingresos)
                 mensaje_balance = generar_texto_balance(periodo_bal, total_ingresos, total_gastos)
-                print(f"🧧 Balance {periodo_bal} generado para {numero_remitente}")
+                print(f"📜 Balance {periodo_bal} generado para {numero_remitente}")
                 await enviar_mensaje_whatsapp(numero_remitente, mensaje_balance)
             elif detectar_solicitud_ingreso(texto):
                 # El usuario registró un ingreso (ej. "ingreso de 1500 sueldo")
