@@ -71,7 +71,7 @@ ACLARACION_CATEGORIAS = (
     "completa en restaurante (que va en 'Ocio y restauración') o de la compra grande de "
     "supermercado.\n"
     "_ 'Tabaco': unicamente gastos en tabaco y cigarros.\n"
-    "- 'Regalos': regalos para otras personas (cumpleanos, navidad, aniversarios, etc.), "
+    "- 'Regalos': regalo para otras personas (cumpleanos, navidad, aniversarios, etc.), "
     "distintos a otro tipo de compras (que va en 'Compras') "
 )
 
@@ -92,15 +92,15 @@ CATEGORIA_EMOJIS = {
     "Otros": "❓",
 }
 
-CATEGORIAS_INGRESO = ["Sueldo", "Freelance", "Extras", "Regalo", "Otros"]
+CATEGORIAS_INGRESO = ["Botin principal", "Contratos de mercenario", "Recompensas extra", "Regalo", "Otros"]
 CATEGORIAS_INGRESO_TEXTO = ", ".join(CATEGORIAS_INGRESO)
 INGRESO_EMOJIS = {
-    "Sueldo": "🪓",
-    "Freelance": "⚔️",
-    "Extras": "✨",
-    "Regalo": "💎",
-    "Otros": "❓",
-    "Reintegros": "🫱🏼‍🫲🏽",
+    "Botin principal": "🪓",
+    "Contratos de mercenario": "⚔️",
+    "Recompensas extra": "✨",
+    "Ofrenda de aliados": "💎",
+    "Suerte": "❓",
+    "Oro recuperado": "🫱🏼‍🫲🏽",
 }
 
 def formatear_fecha_hora_actual():
@@ -207,7 +207,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     Analiza el mensaje del usuario:
     - Si describe un GASTO real (algo que compró, pagó o gastó, con o sin monto explícito),
       responde: {{"intencion": "gasto"}}
-    - Si describe un INGRESO real (dinero que recibió: sueldo, freelance, regalo, venta, reintegro, etc.),
+    - Si describe un INGRESO real (dinero que recibió: Botin principal, Contratos de mercenario, regalo, venta, reintegro, etc.),
       responde: {{"intencion": "ingreso"}}
     - Si pide CAMBIAR/CORREGIR la categoría de un gasto que ya registró antes (identificándolo
       por su descripción o nombre, ej. "pon el gasto de Jennifer González en Vivienda"),
@@ -1031,7 +1031,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 print(f"⚖️ Balance {periodo_bal} generado para {numero_remitente}")
                 await enviar_mensaje_whatsapp(numero_remitente, mensaje_balance)
             elif detectar_solicitud_ingreso(texto):
-                # El usuario registró un ingreso (ej. "ingreso de 1500 sueldo")
+                # El usuario registró un ingreso (ej. "ingreso de 1500 Botin principal")
                 datos_ingreso = await procesar_ingreso_con_ia(texto)
                 print(f"✅ Ingreso registrado: {datos_ingreso}")
                 if datos_ingreso.get("monto"):
