@@ -54,7 +54,7 @@ CATEGORIAS = [
     "Educación",
     "Finanzas",
     "Gastos hormiga",
-    "Tabaco
+    "Tabaco",
     "Otros",
 ]
 CATEGORIAS_TEXTO = ", ".join(CATEGORIAS)
