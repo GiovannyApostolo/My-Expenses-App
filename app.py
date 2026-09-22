@@ -701,7 +701,7 @@ def generar_texto_porcentaje_ingresos(periodo: str, gastos: list, total_ingresos
     lineas = [f"📜 Gastos {etiqueta_periodo} sobre tus ingresos", "", f"🪎 Ingresos: {total_ingresos:.2f}", ""]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total_ingresos) * 100
-        lineas.append(f"  🏷️ {cat}: {porcentaje:.1f}% ({monto:.2f})")
+        lineas.append(f"  🔖 {cat}: {porcentaje:.1f}% ({monto:.2f})")
     porcentaje_ahorro = (ahorro / total_ingresos) * 100
     lineas.append("")
     lineas.append(f"  🛡️ Restante/Ahorro: {porcentaje_ahorro:.1f}% ({ahorro:.2f})")
@@ -735,8 +735,8 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
     emoji_categoria = INGRESO_EMOJIS.get(categoria, "❓")
     return (
         "📯 Transacción Registrada\n"
-        f"• 💰 Monto: {formatear_monto(datos.get('monto'))}\n"
-        f"• 🏷️ Categoría: {emoji_categoria} {categoria}\n"
+        f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
+        f"• 🔖 Categoría: {emoji_categoria} {categoria}\n"
         f"• 🪶 Descripción: {datos.get('descripcion')}\n"
         f"• 🌔 Fecha: {fecha_str}\n"
         f"• ⌛️ Hora: {hora_str}\n"
@@ -993,8 +993,8 @@ def formatear_confirmacion(datos: dict) -> str:
     emoji_categoria = CATEGORIA_EMOJIS.get(categoria, "❓")
     return (
         "📯 Transacción Registrada\n"
-        f"• 💰 Monto: {formatear_monto(datos.get('monto'))}\n"
-        f"• 🏷️ Categoría: {emoji_categoria} {categoria}\n"
+        f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
+        f"• 🔖 Categoría: {emoji_categoria} {categoria}\n"
         f"• 🪶 Descripción: {datos.get('descripcion')}\n"
         f"• 🌔 Fecha: {fecha_str}\n"
         f"• ⌛️ Hora: {hora_str}\n"
