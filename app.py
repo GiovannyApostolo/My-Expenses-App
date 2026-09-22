@@ -50,7 +50,6 @@ CATEGORIAS = [
     "Refugio y suministros",
     "Adquisiciones",
     "Ofrendas",
-    "Mascota",
     "Salud y bienestar",
     "Conocimiento",
     "Tributos y finanzas",
@@ -71,7 +70,7 @@ ACLARACION_CATEGORIAS = (
     "completa en restaurante (que va en 'Taberna y entretenimiento') o de la compra grande de "
     "supermercado.\n"
     "_ 'Vicios': unicamente gastos en tabaco y cigarros.\n"
-    "- 'Ofrendas': regalo para otras personas (cumpleanos, navidad, aniversarios, etc.), "
+    "- 'Ofrendas': regalos para otras personas (cumpleanos, navidad, aniversarios, etc.), "
     "distintos a otro tipo de compras (que va en 'Adquisiciones') "
 )
 
@@ -83,7 +82,7 @@ CATEGORIA_EMOJIS = {
     "Refugio y suministros": "🏰",
     "Adquisiciones": "🏺",
     "Ofrendas": "💎",
-    "Mascota": "🐴",
+    "Companero": "🐴",
     "Salud y bienestar": "🍵",
     "Conocimiento": "📖",
     "Tributos y finanzas": "🪙",
@@ -92,7 +91,11 @@ CATEGORIA_EMOJIS = {
     "Miscelánea": "❓",
 }
 
-CATEGORIAS_INGRESO = ["Botin principal", "Contratos de mercenario", "Recompensas extra", "Regalo", "Miscelánea"]
+# NOTA: renombré "Regalo" -> "Ofrenda de aliados" y "Miscelánea" -> "Suerte" para que
+# coincidan con las claves reales de INGRESO_EMOJIS (en el reskin original esas dos
+# categorías se quedaban sin emoji propio y caían siempre en "❓"). "Oro recuperado"
+# queda como entrada de reserva sin usar, igual que "Reintegros" en el original.
+CATEGORIAS_INGRESO = ["Botin principal", "Contratos de mercenario", "Recompensas extra", "Ofrenda de aliados", "Suerte"]
 CATEGORIAS_INGRESO_TEXTO = ", ".join(CATEGORIAS_INGRESO)
 INGRESO_EMOJIS = {
     "Botin principal": "🪎",
@@ -210,7 +213,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     - Si describe un INGRESO real (dinero que recibió: Botin principal, Contratos de mercenario, regalo, venta, reintegro, etc.),
       responde: {{"intencion": "ingreso"}}
     - Si pide CAMBIAR/CORREGIR la categoría de un gasto que ya registró antes (identificándolo
-      por su descripción o nombre, ej. "pon el gasto de Jennifer González en Vivienda"),
+      por su descripción o nombre, ej. "pon el gasto de Jennifer González en Refugio y suministros"),
       responde: {{"intencion": "corregir_categoria", "descripcion_buscada": "el texto que
       identifica el gasto original", "categoria_nueva": "una de [{CATEGORIAS_TEXTO}]"}}
     - Si es cualquier otra cosa (saludo, pregunta general, petición fuera del alcance del bot,
@@ -364,7 +367,7 @@ async def guardar_ingreso(numero: str, datos: dict):
     payload = {
         "numero": numero,
         "monto": datos.get("monto", 0.0),
-        "categoria": datos.get("categoria", "Miscelánea"),
+        "categoria": datos.get("categoria", "Suerte"),
         "descripcion": datos.get("descripcion", ""),
     }
     respuesta = await request_con_reintentos("POST", url, headers, json_payload=payload)
@@ -504,6 +507,64 @@ ETIQUETAS_PERIODO = {
     "trimestral": "este trimestre",
     "anual": "este año",
 }
+
+# --- ALERTAS DE OBJETIVO DE AHORRO MENSUAL ---
+# Cada umbral salta UNA sola vez, cuando un gasto hace que el % gastado del mes lo cruce.
+# Si un gasto salta varios escalones de golpe, solo se muestra el más alto que cruzó.
+UMBRALES_AHORRO = [
+    (70, "🟡 ALERTA DE RECURSOS",
+     "¡Tus reservas comienzan a disminuir! Has consumido el 70% de tus recursos mensuales. "
+     "Conviene vigilar tus próximos movimientos."),
+    (75, "🟠 TOPE DE RESERVA",
+     "¡Tus reservas están al límite! Has alcanzado el 75% de tu inventario. "
+     "Cada decisión consumirá recursos esenciales."),
+    (80, "🔴 RESERVAS CRÍTICAS",
+     "¡Tus recursos están bajo mínimos! Solo cuentas con un 20% de tus reservas. "
+     "Se recomienda conservar recursos hasta el final del ciclo."),
+    (90, "🛡️ RESERVAS AGOTADAS",
+     "¡Riesgo inminente! Has consumido más del 90% de tus recursos. "
+     "Sigue avanzando bajo tu propio riesgo."),
+    (100, "☠️ ZONA DE PELIGRO",
+     "¡Has agotado todos tus recursos! Cualquier gasto adicional requerirá recursos de emergencia."),
+]
+# A diferencia de los umbrales de arriba (que saltan una sola vez), este se repite en
+# CADA gasto nuevo mientras sigas por encima del 100%, ya que representa un estado
+# continuo ("sigues en números rojos"), no un cruce puntual.
+MENSAJE_MODO_SUPERVIVENCIA = (
+    "💀 MODO SUPERVIVENCIA",
+    "¡Has entrado en MODO SUPERVIVENCIA! Recupera recursos antes de continuar."
+)
+
+def determinar_alerta_ahorro(pct_antes: float, pct_despues: float):
+    if pct_antes > 100 and pct_despues > pct_antes:
+        return MENSAJE_MODO_SUPERVIVENCIA
+    for umbral, titulo, texto in reversed(UMBRALES_AHORRO):
+        if pct_antes < umbral <= pct_despues:
+            return (titulo, texto)
+    return None
+
+async def verificar_alerta_ahorro(numero: str, monto_nuevo: float):
+    """Se llama DESPUÉS de guardar uno o más gastos nuevos. 'monto_nuevo' es la suma de
+    lo recién agregado, para poder reconstruir el % de antes y de después."""
+    if not monto_nuevo:
+        return None
+    desde, hasta = calcular_rango_fechas("mensual")
+    gastos_mes = await obtener_gastos(numero, desde, hasta)  # ya incluye lo recién guardado
+    ingresos_mes = await obtener_ingresos(numero, desde, hasta)
+    total_ingresos = sum(float(i["monto"]) for i in ingresos_mes)
+    if total_ingresos <= 0:
+        return None
+    total_gastos_despues = sum(float(g["monto"]) for g in gastos_mes)
+    total_gastos_antes = total_gastos_despues - float(monto_nuevo)
+    pct_antes = (total_gastos_antes / total_ingresos) * 100
+    pct_despues = (total_gastos_despues / total_ingresos) * 100
+    return determinar_alerta_ahorro(pct_antes, pct_despues)
+
+async def enviar_alerta_ahorro_si_corresponde(numero_remitente: str, monto_nuevo: float):
+    alerta = await verificar_alerta_ahorro(numero_remitente, monto_nuevo)
+    if alerta:
+        titulo, texto = alerta
+        await enviar_mensaje_whatsapp(numero_remitente, f"{titulo}\n{texto}")
 
 def resolver_periodo(texto: str, periodo_tipo: str):
     """Dado un tipo de período ya detectado, calcula el rango de fechas exacto y una
@@ -670,7 +731,7 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
     if not datos.get("monto"):
         return "⚠️ No pude procesar ese ingreso. ¿Puedes intentar describirlo de otra forma?"
     fecha_str, hora_str = formatear_fecha_hora_actual()
-    categoria = datos.get("categoria", "Miscelánea")
+    categoria = datos.get("categoria", "Suerte")
     emoji_categoria = INGRESO_EMOJIS.get(categoria, "❓")
     return (
         "✅ Transacción Registrada\n"
@@ -1031,7 +1092,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 print(f"⚖️ Balance {periodo_bal} generado para {numero_remitente}")
                 await enviar_mensaje_whatsapp(numero_remitente, mensaje_balance)
             elif detectar_solicitud_ingreso(texto):
-                # El usuario registró un ingreso (ej. "ingreso de 1500 Botin principal")
+                # El usuario registró un ingreso (ej. "ingreso de 1500 sueldo")
                 datos_ingreso = await procesar_ingreso_con_ia(texto)
                 print(f"✅ Ingreso registrado: {datos_ingreso}")
                 if datos_ingreso.get("monto"):
@@ -1092,6 +1153,8 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     if datos.get("categoria") != "Error":
                         await guardar_gasto(numero_remitente, datos)
                     await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
+                    if datos.get("categoria") != "Error":
+                        await enviar_alerta_ahorro_si_corresponde(numero_remitente, datos.get("monto", 0))
 
         # Procesar fotos (recibo único o lista de transacciones bancarias)
         elif message["type"] == "image":
@@ -1111,6 +1174,10 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     gastos_guardados.append(t)
 
             await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion_lote(gastos_guardados, ingresos_guardados))
+
+            if gastos_guardados:
+                total_gastos_lote = sum(float(g.get("monto", 0)) for g in gastos_guardados)
+                await enviar_alerta_ahorro_si_corresponde(numero_remitente, total_gastos_lote)
 
     except Exception as e:
         print(f"⚠️ Error procesando/respondiendo mensaje: {type(e).__name__}: {e}")
