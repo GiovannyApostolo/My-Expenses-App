@@ -43,14 +43,14 @@ MODELO = "gemini-3.7-flash"
 MODELO_RESPALDO = "gemini-3.6-flash"
 
 CATEGORIAS = [
-    "Taberna y entretenimiento",
+    "Taberna",
     "Comida y provisiones",
     "Movilidad y monturas",
     "Servicios Activos",
     "Refugio y suministros",
     "Adquisiciones",
     "Ofrendas",
-    "Salud y bienestar",
+    "Salud y estamina",
     "Conocimiento",
     "Tributos y finanzas",
     "Fugas de Oro",
@@ -60,14 +60,14 @@ CATEGORIAS = [
 CATEGORIAS_TEXTO = ", ".join(CATEGORIAS)
 ACLARACION_CATEGORIAS = (
     "Distingue bien entre estas categorías que se prestan a confusión:\n"
-    "- 'Taberna y entretenimiento': comer/beber fuera de casa (restaurantes, bares, cafeterías, "
+    "- 'Taberna': comer/beber fuera de casa (restaurantes, bares, cafeterías, "
     "comida a domicilio) y entretenimiento puntual (cine, conciertos, videojuegos, salidas).\n"
     "- 'Servicios Activos': CUALQUIER pago recurrente/periódico, sea de entretenimiento o no "
     "(Netflix, Spotify, Tidal, iCloud/Apple Cloud, Google Cloud, ChatGPT Plus, Suno, hosting, "
     "dominios, gimnasio con cuota mensual, etc.).\n"
     "- 'Fugas de Oro': gastos pequeños, impulsivos y cotidianos hechos en la calle o al paso "
     "(un refresco, un café rápido, chicles, prensa, una chocolatina), distintos de una comida "
-    "completa en restaurante (que va en 'Taberna y entretenimiento') o de la compra grande de "
+    "completa en restaurante (que va en 'Taberna') o de la compra grande de "
     "supermercado.\n"
     "_ 'Vicios': unicamente gastos en tabaco y cigarros.\n"
     "- 'Ofrendas': regalos para otras personas (cumpleanos, navidad, aniversarios, etc.), "
@@ -75,7 +75,7 @@ ACLARACION_CATEGORIAS = (
 )
 
 CATEGORIA_EMOJIS = {
-    "Taberna y entretenimiento": "🎪",
+    "Taberna": "🎪",
     "Comida y provisiones": "🥖",
     "Movilidad y monturas": "🐫",
     "Servicios Activos": "🔮",
@@ -83,26 +83,26 @@ CATEGORIA_EMOJIS = {
     "Adquisiciones": "🏺",
     "Ofrendas": "💎",
     "Companero": "🐴",
-    "Salud y bienestar": "🍵",
+    "Salud y estamina": "🍵",
     "Conocimiento": "📖",
     "Tributos y finanzas": "🪙",
     "Fugas de Oro": "🐜",
     "Vicios": "🍂",
-    "Miscelánea": "❓",
+    "Miscelánea": "🧺",
 }
 
-# NOTA: renombré "Regalo" -> "Ofrenda de aliados" y "Miscelánea" -> "Suerte" para que
+# NOTA: renombré "Regalo" -> "Ofrenda de aliados" y "Miscelánea" -> "Objeto encontrado" para que
 # coincidan con las claves reales de INGRESO_EMOJIS (en el reskin original esas dos
-# categorías se quedaban sin emoji propio y caían siempre en "❓"). "Oro recuperado"
+# categorías se quedaban sin emoji propio y caían siempre en "🧺"). "Oro recuperado"
 # queda como entrada de reserva sin usar, igual que "Reintegros" en el original.
-CATEGORIAS_INGRESO = ["Botin principal", "Contratos de mercenario", "Recompensas extra", "Ofrenda de aliados", "Suerte"]
+CATEGORIAS_INGRESO = ["Botin principal", "Contratos de mercenario", "Recompensas extra", "Ofrenda de aliados", "Objeto encontrado"]
 CATEGORIAS_INGRESO_TEXTO = ", ".join(CATEGORIAS_INGRESO)
 INGRESO_EMOJIS = {
     "Botin principal": "🪎",
     "Contratos de mercenario": "⚔️",
     "Recompensas extra": "✨",
     "Ofrenda de aliados": "💎",
-    "Suerte": "❓",
+    "Objeto encontrado": "🧺",
     "Oro recuperado": "🫱🏼‍🫲🏽",
 }
 
@@ -367,7 +367,7 @@ async def guardar_ingreso(numero: str, datos: dict):
     payload = {
         "numero": numero,
         "monto": datos.get("monto", 0.0),
-        "categoria": datos.get("categoria", "Suerte"),
+        "categoria": datos.get("categoria", "Objeto encontrado"),
         "descripcion": datos.get("descripcion", ""),
     }
     respuesta = await request_con_reintentos("POST", url, headers, json_payload=payload)
@@ -412,15 +412,15 @@ PERIODOS = {
 
 # Alias -> nombre exacto de categoría (debe coincidir con CATEGORIAS)
 ALIASES_CATEGORIA = {
-    "restaurantes": "Taberna y entretenimiento", "restaurante": "Taberna y entretenimiento",
-    "restauracion": "Taberna y entretenimiento", "ocio": "Taberna y entretenimiento",
+    "restaurantes": "Taberna", "restaurante": "Taberna",
+    "restauracion": "Taberna", "ocio": "Taberna",
     "supermercado": "Comida y provisiones", "super": "Comida y provisiones",
     "transporte": "Movilidad y monturas", "vehiculo": "Movilidad y monturas", "gasolina": "Movilidad y monturas",
     "suscripciones": "Servicios Activos", "suscripcion": "Servicios Activos", "subscripciones": "Servicios Activos", "subscripcion": "Servicios Activos",
     "vivienda": "Refugio y suministros", "servicios": "Refugio y suministros", "alquiler": "Refugio y suministros",
     "compras": "Adquisiciones",
     "regalos": "Ofrendas", "regalo": "Ofrendas", "cumpleanos": "Ofrendas",
-    "salud": "Salud y bienestar", "cuidado personal": "Salud y bienestar",
+    "salud": "Salud y estamina", "cuidado personal": "Salud y estamina",
     "educacion": "Conocimiento",
     "finanzas": "Tributos y finanzas",
     "hormigas": "Fugas de Oro", "hormiga": "Fugas de Oro",
@@ -731,7 +731,7 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
     if not datos.get("monto"):
         return "⚠️ No pude procesar ese ingreso. ¿Puedes intentar describirlo de otra forma?"
     fecha_str, hora_str = formatear_fecha_hora_actual()
-    categoria = datos.get("categoria", "Suerte")
+    categoria = datos.get("categoria", "Objeto encontrado")
     emoji_categoria = INGRESO_EMOJIS.get(categoria, "❓")
     return (
         "✅ Transacción Registrada\n"
