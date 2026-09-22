@@ -593,7 +593,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
         emoji_cat = CATEGORIA_EMOJIS.get(categoria, "❓")
         titulo = f"📜 Crónica de {etiqueta} — {emoji_cat} {categoria}"
         if not gastos:
-            return f"{titulo}\n\nNo tienes gastos registrados en este período. 🎊"
+            return f"{titulo}\n\nTus arcas descansan sin gastos durante este período. 🎊"
         total = sum(float(g["monto"]) for g in gastos)
         lineas = [titulo, "", f"🪽 Desembolso total: {formatear_monto(total)}", ""]
         for g in sorted(gastos, key=lambda x: x.get("fecha", "")):
@@ -649,11 +649,11 @@ def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
     etiqueta_periodo = ETIQUETAS_PERIODO.get(periodo, "en el período")
 
     if not gastos:
-        return f"📜 No tienes gastos registrados {etiqueta_periodo}. 🎊"
+        return f"📜 Tus arcas descansan sin gastos {etiqueta_periodo}. 🎊"
 
     total = sum(float(g["monto"]) for g in gastos)
     if total == 0:
-        return f"📜 No tienes gastos registrados {etiqueta_periodo}. 🎊"
+        return f"📜 Tus arcas descansan sin gastos {etiqueta_periodo}. 🎊"
 
     if categoria:
         monto_categoria = sum(float(g["monto"]) for g in gastos if g.get("categoria") == categoria)
@@ -669,7 +669,7 @@ def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
         cat = g.get("categoria", "Miscelánea")
         por_categoria[cat] = por_categoria.get(cat, 0.0) + float(g["monto"])
 
-    lineas = [f"📜 Distribución de gastos {etiqueta_periodo}", "", f"🪎 Total: {total:.2f}", ""]
+    lineas = [f"📜 Reparto del tesoro {etiqueta_periodo}", "", f"🪎 Total: {total:.2f}", ""]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total) * 100
         emoji_cat = CATEGORIA_EMOJIS.get(cat, "❓")
@@ -681,7 +681,7 @@ def generar_texto_porcentaje_ingresos(periodo: str, gastos: list, total_ingresos
     etiqueta_periodo = ETIQUETAS_PERIODO.get(periodo, "en el período")
 
     if total_ingresos <= 0:
-        return f"⚠️ No tienes ingresos registrados {etiqueta_periodo}, así que no puedo calcular el porcentaje sobre tus ingresos."
+        return f"🧌 No hay botín registrado {etiqueta_periodo}, así que no puedo calcular esa fracción."
 
     if categoria:
         monto_categoria = sum(float(g["monto"]) for g in gastos if g.get("categoria") == categoria)
@@ -706,7 +706,7 @@ def generar_texto_porcentaje_ingresos(periodo: str, gastos: list, total_ingresos
         lineas.append(f"  {emoji_cat} {cat}: {porcentaje:.1f}% ({monto:.2f})")
     porcentaje_ahorro = (ahorro / total_ingresos) * 100
     lineas.append("")
-    lineas.append(f"  🛡️ Restante/Ahorro: {porcentaje_ahorro:.1f}% ({ahorro:.2f})")
+    lineas.append(f"  🛡️ Reservas intactas: {porcentaje_ahorro:.1f}% ({ahorro:.2f})")
 
     return "\n".join(lineas)
 
@@ -736,13 +736,13 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
     categoria = datos.get("categoria", "Objeto encontrado")
     emoji_categoria = INGRESO_EMOJIS.get(categoria, "❓")
     return (
-        "📯 Transacción Registrada\n"
+        "📯 Registrado en los libros\n"
         f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
         f"• 🔖 Categoría: {emoji_categoria} {categoria}\n"
         f"• 🪶 Descripción: {datos.get('descripcion')}\n"
         f"• 🌔 Fecha: {fecha_str}\n"
         f"• ⌛️ Hora: {hora_str}\n"
-        f"• 🀄️ Tipo: Ingreso"
+        f"• 🀄️ Tipo: Botín"
     )
 
 # --- EXPORTAR EXCEL ---
@@ -852,7 +852,7 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Resumen"
+    ws.title = "Libro Mayor"
 
     total_gastos = sum(float(g.get("monto", 0)) for g in gastos)
     total_ingresos = sum(float(i.get("monto", 0)) for i in ingresos)
@@ -994,13 +994,13 @@ def formatear_confirmacion(datos: dict) -> str:
     categoria = datos.get("categoria", "Miscelánea")
     emoji_categoria = CATEGORIA_EMOJIS.get(categoria, "❓")
     return (
-        "📯 Transacción Registrada\n"
+        "📯 Registrado en los libros\n"
         f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
         f"• 🔖 Categoría: {emoji_categoria} {categoria}\n"
         f"• 🪶 Descripción: {datos.get('descripcion')}\n"
         f"• 🌔 Fecha: {fecha_str}\n"
         f"• ⌛️ Hora: {hora_str}\n"
-        f"• 🀄️ Tipo: Gasto"
+        f"• 🀄️ Tipo: Desembolso"
     )
 
 def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
@@ -1009,7 +1009,7 @@ def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
         return "🧌 No pude leer ningún movimiento en ese pergamino. ¿Tienes una imagen más clara?"
 
     fecha_str, hora_str = formatear_fecha_hora_actual()
-    lineas = [f"📯 {total} transacciones registradas", f"🌔 {fecha_str} — ⏳ {hora_str}", ""]
+    lineas = [f"📯 {total} movimientos añadidos a la crónica", f"🌔 {fecha_str} — ⏳ {hora_str}", ""]
 
     if gastos:
         total_gastos = sum(float(g.get("monto", 0)) for g in gastos)
@@ -1054,7 +1054,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                         caption = f"🧧 Libro de cuentas — {etiqueta_caption} ({len(gastos)} transacciones)"
                         await enviar_documento_whatsapp(numero_remitente, media_id, nombre_archivo, caption)
                     else:
-                        await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No pude generar el archivo de exportación. Intenta de nuevo en un momento.")
+                        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El escriba no ha podido preparar el pergamino. Inténtalo de nuevo en unos instantes.")
             elif periodo:
                 # El usuario pidió un resumen/informe (opcionalmente filtrado por categoría,
                 # y opcionalmente con mes/trimestre específico, ej. "resumen de julio")
@@ -1118,7 +1118,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     categoria_nueva = resolver_categoria(clasificacion.get("categoria_nueva", ""), CATEGORIAS)
 
                     if not descripcion_buscada or not categoria_nueva:
-                        await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No entendí bien qué gasto o categoría quieres cambiar. ¿Puedes reformularlo? (ej. \"pon el gasto de Jennifer en Refugio y suministros\")")
+                        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El escriba no ha logrado interpretar tu petición. ¿Puedes reformularlo? (ej. \"pon el gasto de Jennifer en Refugio y suministros\")")
                     else:
                         candidatos = await buscar_gastos_por_descripcion(numero_remitente, descripcion_buscada)
                         if not candidatos:
