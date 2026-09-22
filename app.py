@@ -44,7 +44,7 @@ MODELO_RESPALDO = "gemini-3.6-flash"
 
 CATEGORIAS = [
     "Taberna",
-    "Comida y provisiones",
+    "Provisiones",
     "Movilidad y monturas",
     "Servicios Activos",
     "Refugio y suministros",
@@ -76,7 +76,7 @@ ACLARACION_CATEGORIAS = (
 
 CATEGORIA_EMOJIS = {
     "Taberna": "🎪",
-    "Comida y provisiones": "🥖",
+    "Provisiones": "🥖",
     "Movilidad y monturas": "🐫",
     "Servicios Activos": "🔮",
     "Refugio y suministros": "🏰",
@@ -414,7 +414,7 @@ PERIODOS = {
 ALIASES_CATEGORIA = {
     "restaurantes": "Taberna", "restaurante": "Taberna",
     "restauracion": "Taberna", "ocio": "Taberna",
-    "supermercado": "Comida y provisiones", "super": "Comida y provisiones",
+    "supermercado": "Provisiones", "super": "Provisiones",
     "transporte": "Movilidad y monturas", "vehiculo": "Movilidad y monturas", "gasolina": "Movilidad y monturas",
     "suscripciones": "Servicios Activos", "suscripcion": "Servicios Activos", "subscripciones": "Servicios Activos", "subscripcion": "Servicios Activos",
     "vivienda": "Refugio y suministros", "servicios": "Refugio y suministros", "alquiler": "Refugio y suministros",
