@@ -734,13 +734,13 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
     categoria = datos.get("categoria", "Objeto encontrado")
     emoji_categoria = INGRESO_EMOJIS.get(categoria, "❓")
     return (
-        "✔️ Transacción Registrada\n"
+        "📯 Transacción Registrada\n"
         f"• 💰 Monto: {formatear_monto(datos.get('monto'))}\n"
         f"• 🏷️ Categoría: {emoji_categoria} {categoria}\n"
         f"• 🪶 Descripción: {datos.get('descripcion')}\n"
-        f"• 📅 Fecha: {fecha_str}\n"
+        f"• 🌔 Fecha: {fecha_str}\n"
         f"• ⌛️ Hora: {hora_str}\n"
-        f"• 🎴 Tipo: Ingreso"
+        f"• 🀄️ Tipo: Ingreso"
     )
 
 # --- EXPORTAR EXCEL ---
@@ -992,13 +992,13 @@ def formatear_confirmacion(datos: dict) -> str:
     categoria = datos.get("categoria", "Miscelánea")
     emoji_categoria = CATEGORIA_EMOJIS.get(categoria, "❓")
     return (
-        "✔️ Transacción Registrada\n"
+        "📯 Transacción Registrada\n"
         f"• 💰 Monto: {formatear_monto(datos.get('monto'))}\n"
         f"• 🏷️ Categoría: {emoji_categoria} {categoria}\n"
         f"• 🪶 Descripción: {datos.get('descripcion')}\n"
-        f"• 📅 Fecha: {fecha_str}\n"
+        f"• 🌔 Fecha: {fecha_str}\n"
         f"• ⌛️ Hora: {hora_str}\n"
-        f"• 🃏 Tipo: Gasto"
+        f"• 🀄️ Tipo: Gasto"
     )
 
 def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
@@ -1007,7 +1007,7 @@ def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
         return "⚠️ No identifiqué ninguna transacción en esa imagen. ¿Puedes intentar con una foto más clara?"
 
     fecha_str, hora_str = formatear_fecha_hora_actual()
-    lineas = [f"✔️ {total} transacciones registradas", f"📅 {fecha_str} — ⏳ {hora_str}", ""]
+    lineas = [f"📯 {total} transacciones registradas", f"🌔 {fecha_str} — ⏳ {hora_str}", ""]
 
     if gastos:
         total_gastos = sum(float(g.get("monto", 0)) for g in gastos)
@@ -1094,7 +1094,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
             elif detectar_solicitud_ingreso(texto):
                 # El usuario registró un ingreso (ej. "ingreso de 1500 sueldo")
                 datos_ingreso = await procesar_ingreso_con_ia(texto)
-                print(f"✔️ Ingreso registrado: {datos_ingreso}")
+                print(f"📯 Ingreso registrado: {datos_ingreso}")
                 if datos_ingreso.get("monto"):
                     await guardar_ingreso(numero_remitente, datos_ingreso)
                 await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion_ingreso(datos_ingreso))
@@ -1106,7 +1106,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
 
                 if intencion == "ingreso":
                     datos_ingreso = await procesar_ingreso_con_ia(texto)
-                    print(f"✔️ Ingreso registrado (vía clasificador): {datos_ingreso}")
+                    print(f"📯 Ingreso registrado (vía clasificador): {datos_ingreso}")
                     if datos_ingreso.get("monto"):
                         await guardar_ingreso(numero_remitente, datos_ingreso)
                     await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion_ingreso(datos_ingreso))
@@ -1130,7 +1130,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                                 extra = f"\n\n(Había {len(candidatos) - 1} coincidencia(s) más sin modificar; sé más específico si quieres cambiar otra)" if len(candidatos) > 1 else ""
                                 await enviar_mensaje_whatsapp(
                                     numero_remitente,
-                                    f"✔️ Categoría actualizada\n"
+                                    f"📯 Categoría actualizada\n"
                                     f"• 📝 {gasto.get('descripcion')} ({formatear_monto_corto(gasto.get('monto'))})\n"
                                     f"• {emoji_cat} Ahora está en: {categoria_nueva}{extra}"
                                 )
@@ -1149,7 +1149,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 else:
                     # "gasto" (o clasificación no reconocida, por seguridad)
                     datos = await procesar_gasto_con_ia(texto)
-                    print(f"✔️ Gasto registrado (Texto): {datos}")
+                    print(f"📯 Gasto registrado (Texto): {datos}")
                     if datos.get("categoria") != "Error":
                         await guardar_gasto(numero_remitente, datos)
                     await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
@@ -1161,7 +1161,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
             media_id = message["image"]["id"]
             imagen = await descargar_imagen_whatsapp(media_id)
             transacciones = await procesar_imagen_transacciones_con_ia(imagen)
-            print(f"✔️ Transacciones detectadas en imagen ({len(transacciones)}): {transacciones}")
+            print(f"📯 Transacciones detectadas en imagen ({len(transacciones)}): {transacciones}")
 
             gastos_guardados = []
             ingresos_guardados = []
