@@ -367,7 +367,7 @@ async def guardar_ingreso(numero: str, datos: dict):
     payload = {
         "numero": numero,
         "monto": datos.get("monto", 0.0),
-        "categoria": datos.get("categoria", "Objeto encontrado"),
+        "categoria": datos.get("categoria", "Suerte"),
         "descripcion": datos.get("descripcion", ""),
     }
     respuesta = await request_con_reintentos("POST", url, headers, json_payload=payload)
@@ -672,7 +672,8 @@ def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
     lineas = [f"📜 Distribución de gastos {etiqueta_periodo}", "", f"🪎 Total: {total:.2f}", ""]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total) * 100
-        lineas.append(f"  🔖 {cat}: {porcentaje:.1f}% ({monto:.2f})")
+        emoji_cat = CATEGORIA_EMOJIS.get(cat, "❓")
+        lineas.append(f"  {emoji_cat} {cat}: {porcentaje:.1f}% ({monto:.2f})")
 
     return "\n".join(lineas)
 
@@ -701,7 +702,8 @@ def generar_texto_porcentaje_ingresos(periodo: str, gastos: list, total_ingresos
     lineas = [f"📜 Gastos {etiqueta_periodo} sobre tus ingresos", "", f"🪎 Ingresos: {total_ingresos:.2f}", ""]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total_ingresos) * 100
-        lineas.append(f"  🔖 {cat}: {porcentaje:.1f}% ({monto:.2f})")
+        emoji_cat = CATEGORIA_EMOJIS.get(cat, "❓")
+        lineas.append(f"  {emoji_cat} {cat}: {porcentaje:.1f}% ({monto:.2f})")
     porcentaje_ahorro = (ahorro / total_ingresos) * 100
     lineas.append("")
     lineas.append(f"  🛡️ Restante/Ahorro: {porcentaje_ahorro:.1f}% ({ahorro:.2f})")
@@ -1131,7 +1133,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                                 await enviar_mensaje_whatsapp(
                                     numero_remitente,
                                     f"📯 Categoría actualizada\n"
-                                    f"• 📝 {gasto.get('descripcion')} ({formatear_monto_corto(gasto.get('monto'))})\n"
+                                    f"• 🪶 {gasto.get('descripcion')} ({formatear_monto_corto(gasto.get('monto'))})\n"
                                     f"• {emoji_cat} Ahora está en: {categoria_nueva}{extra}"
                                 )
                             else:
