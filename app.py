@@ -591,7 +591,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
     # --- Informe filtrado por una sola categoría de gasto (sin sección de ingresos/balance) ---
     if categoria:
         emoji_cat = CATEGORIA_EMOJIS.get(categoria, "❓")
-        titulo = f"📜 Resumen de {etiqueta} — {emoji_cat} {categoria}"
+        titulo = f"📜 Crónica de {etiqueta} — {emoji_cat} {categoria}"
         if not gastos:
             return f"{titulo}\n\nNo tienes gastos registrados en este período. 🎊"
         total = sum(float(g["monto"]) for g in gastos)
@@ -601,11 +601,11 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
         return "\n".join(lineas)
 
     # --- Informe general: gastos por categoría + ingresos por categoría + balance ---
-    titulo = f"📜 Resumen de {etiqueta}"
+    titulo = f"📜 Crónica de {etiqueta}"
     total_gastos = sum(float(g["monto"]) for g in gastos)
     total_ingresos = sum(float(i["monto"]) for i in ingresos)
 
-    lineas = [titulo, "", f"🪽 Total gastos: {formatear_monto(total_gastos)}"]
+    lineas = [titulo, "", f"🪽 Gastos totales: {formatear_monto(total_gastos)}"]
 
     if gastos:
         por_categoria = {}
@@ -621,7 +621,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
                 lineas.append(formatear_linea_transaccion(g))
 
     lineas.append("")
-    lineas.append(f"🪎 Total ingresos: {formatear_monto(total_ingresos)}")
+    lineas.append(f"🪎 Botín total: {formatear_monto(total_ingresos)}")
 
     if ingresos:
         por_categoria_ing = {}
@@ -639,9 +639,9 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
     lineas.append("")
     if total_ingresos > 0:
         pct_gastado = (total_gastos / total_ingresos) * 100
-        lineas.append(f"🧮 Balance: {signo}{formatear_monto_corto(abs(balance))} ({pct_gastado:.1f}% de tus ingresos gastado)")
+        lineas.append(f"🧮 Tesoro restante: {signo}{formatear_monto_corto(abs(balance))} ({pct_gastado:.1f}% de tus ingresos gastado)")
     else:
-        lineas.append(f"🧮 Balance: {signo}{formatear_monto_corto(abs(balance))}")
+        lineas.append(f"🧮 Tesoro restante: {signo}{formatear_monto_corto(abs(balance))}")
 
     return "\n".join(lineas)
 
@@ -715,15 +715,15 @@ def generar_texto_balance(periodo: str, total_ingresos: float, total_gastos: flo
     balance = total_ingresos - total_gastos
 
     lineas = [
-        f"⚖️ Balance {etiqueta_periodo}",
+        f"⚖️ Balance de arcas {etiqueta_periodo}",
         "",
-        f"🪎 Ingresos: {total_ingresos:.2f}",
-        f"🪽 Gastos: {total_gastos:.2f}",
-        f"🧮 Balance: {balance:.2f}",
+        f"🪎 Botín recaudado: {total_ingresos:.2f}",
+        f"🪽 Oro gastado: {total_gastos:.2f}",
+        f"🧮 Tesoro neto: {balance:.2f}",
     ]
     if total_ingresos > 0:
         pct_gastado = (total_gastos / total_ingresos) * 100
-        lineas.append(f"📜 Has gastado el {pct_gastado:.1f}% de tus ingresos")
+        lineas.append(f"📜 Has consumido el {pct_gastado:.1f}% de tus ingresos")
     else:
         lineas.append("🧌 No tienes ingresos registrados en este período.")
 
@@ -731,7 +731,7 @@ def generar_texto_balance(periodo: str, total_ingresos: float, total_gastos: flo
 
 def formatear_confirmacion_ingreso(datos: dict) -> str:
     if not datos.get("monto"):
-        return "⚠️ No pude procesar ese ingreso. ¿Puedes intentar describirlo de otra forma?"
+        return "🧌 El heraldo no logró registrar ese botín. Inténtalo de nuevo."
     fecha_str, hora_str = formatear_fecha_hora_actual()
     categoria = datos.get("categoria", "Objeto encontrado")
     emoji_categoria = INGRESO_EMOJIS.get(categoria, "❓")
@@ -896,9 +896,9 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
     ws.cell(row=fila, column=1, value="TOTAL").font = Font(bold=True)
     ws.cell(row=fila, column=3, value=total_gastos).font = Font(bold=True)
 
-    # --- Sección 3: Resumen de gastos por categoría (% sobre el total de ingresos) ---
+    # --- Sección 3: Crónica de gastos por categoría (% sobre el total de ingresos) ---
     fila += 3
-    ws.cell(row=fila, column=1, value="Resumen de gastos por categoría").font = fuente_subtitulo
+    ws.cell(row=fila, column=1, value="Crónica de gastos por categoría").font = fuente_subtitulo
     fila += 1
     fila_encabezado(ws, fila, ["Categoría", "Total", "% de ingresos"])
     fila += 1
@@ -989,7 +989,7 @@ async def enviar_mensaje_whatsapp(numero_destino: str, texto: str):
 
 def formatear_confirmacion(datos: dict) -> str:
     if datos.get("categoria") == "Error":
-        return "⚠️ No pude procesar ese gasto. ¿Puedes intentar describirlo de otra forma?"
+        return "🧌 Los escribas no comprendieron esa transacción. ¿Puedes narrarla de otra forma?"
     fecha_str, hora_str = formatear_fecha_hora_actual()
     categoria = datos.get("categoria", "Miscelánea")
     emoji_categoria = CATEGORIA_EMOJIS.get(categoria, "❓")
@@ -1006,7 +1006,7 @@ def formatear_confirmacion(datos: dict) -> str:
 def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
     total = len(gastos) + len(ingresos)
     if total == 0:
-        return "⚠️ No identifiqué ninguna transacción en esa imagen. ¿Puedes intentar con una foto más clara?"
+        return "🧌 No pude leer ningún movimiento en ese pergamino. ¿Tienes una imagen más clara?""
 
     fecha_str, hora_str = formatear_fecha_hora_actual()
     lineas = [f"📯 {total} transacciones registradas", f"🌔 {fecha_str} — ⏳ {hora_str}", ""]
@@ -1042,10 +1042,10 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 desde, hasta, nombre_archivo_base, etiqueta_caption = preparar_exportacion(texto)
                 gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
                 ingresos = [] if categoria else await obtener_ingresos(numero_remitente, desde, hasta)
-                print(f"🧧 Exportación '{nombre_archivo_base}'{' / ' + categoria if categoria else ''} solicitada por {numero_remitente} ({len(gastos)} gastos, {len(ingresos)} ingresos)")
+                print(f"🧧 Libro de cuentas '{nombre_archivo_base}'{' / ' + categoria if categoria else ''} solicitada por {numero_remitente} ({len(gastos)} gastos, {len(ingresos)} ingresos)")
 
                 if not gastos and not ingresos:
-                    await enviar_mensaje_whatsapp(numero_remitente, f"No tienes gastos ni ingresos registrados en {etiqueta_caption} para exportar.")
+                    await enviar_mensaje_whatsapp(numero_remitente, f"🧌 No hay movimientos en tus arcas durante {etiqueta_caption} para exportar.")
                 else:
                     contenido_excel = generar_excel_gastos(gastos, ingresos)
                     nombre_archivo = f"{nombre_archivo_base}.xlsx"
@@ -1054,7 +1054,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                         caption = f"🧧 Gastos — {etiqueta_caption} ({len(gastos)} registros)"
                         await enviar_documento_whatsapp(numero_remitente, media_id, nombre_archivo, caption)
                     else:
-                        await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No pude generar el archivo de exportación. Intenta de nuevo en un momento.")
+                        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El escriba no ha podido preparar el pergamino. Inténtalo de nuevo en un momento")
             elif periodo:
                 # El usuario pidió un resumen/informe (opcionalmente filtrado por categoría,
                 # y opcionalmente con mes/trimestre específico, ej. "resumen de julio")
@@ -1118,11 +1118,11 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     categoria_nueva = resolver_categoria(clasificacion.get("categoria_nueva", ""), CATEGORIAS)
 
                     if not descripcion_buscada or not categoria_nueva:
-                        await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No entendí bien qué gasto o categoría quieres cambiar. ¿Puedes reformularlo? (ej. \"pon el gasto de Jennifer en Refugio y suministros\")")
+                        await enviar_mensaje_whatsapp(numero_remitente, "🧌 La orden no ha sido suficientemente clara. Reformula tu petición e inténtalo de nuevo. (ej. \"pon el gasto de Jennifer en Refugio y suministros\")")
                     else:
                         candidatos = await buscar_gastos_por_descripcion(numero_remitente, descripcion_buscada)
                         if not candidatos:
-                            await enviar_mensaje_whatsapp(numero_remitente, f"⚠️ No encontré ningún gasto que coincida con \"{descripcion_buscada}\".")
+                            await enviar_mensaje_whatsapp(numero_remitente, f"🧌 No hallé ningún registro en los libros que coincida con \"{descripcion_buscada}\".")
                         else:
                             gasto = candidatos[0]  # el más reciente
                             ok = await actualizar_categoria_gasto(gasto["id"], categoria_nueva)
@@ -1132,12 +1132,12 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                                 extra = f"\n\n(Había {len(candidatos) - 1} coincidencia(s) más sin modificar; sé más específico si quieres cambiar otra)" if len(candidatos) > 1 else ""
                                 await enviar_mensaje_whatsapp(
                                     numero_remitente,
-                                    f"📯 Categoría actualizada\n"
+                                    f"📯 Registro reclasificado\n"
                                     f"• 🪶 {gasto.get('descripcion')} ({formatear_monto_corto(gasto.get('monto'))})\n"
                                     f"• {emoji_cat} Ahora está en: {categoria_nueva}{extra}"
                                 )
                             else:
-                                await enviar_mensaje_whatsapp(numero_remitente, "⚠️ No pude actualizar la categoría. Intenta de nuevo en un momento.")
+                                await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo reclasificar ese gasto. Intenta de nuevo en un momento.")
 
                 elif intencion == "no_soportado":
                     respuesta = clasificacion.get("respuesta") or (
