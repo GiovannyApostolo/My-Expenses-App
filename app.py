@@ -99,7 +99,7 @@ CATEGORIAS_INGRESO = ["Botin principal", "Contratos de mercenario", "Recompensas
 CATEGORIAS_INGRESO_TEXTO = ", ".join(CATEGORIAS_INGRESO)
 INGRESO_EMOJIS = {
     "Botin principal": "🪎",
-    "Contratos de mercenario": "⚔️",
+    "Botin de mercenario": "🗡️",
     "Recompensas extra": "✨",
     "Ofrenda de aliados": "💎",
     "Objeto encontrado": "🧺",
@@ -521,7 +521,7 @@ UMBRALES_AHORRO = [
     (80, "🔴 RESERVAS CRÍTICAS",
      "¡Tus recursos están bajo mínimos! Solo cuentas con un 20% de tus reservas. "
      "Se recomienda conservar recursos hasta el final del ciclo."),
-    (90, "🛡️ RESERVAS AGOTADAS",
+    (90, "⚔️ RESERVAS AGOTADAS",
      "¡Riesgo inminente! Has consumido más del 90% de tus recursos. "
      "Sigue avanzando bajo tu propio riesgo."),
     (100, "☠️ ZONA DE PELIGRO",
@@ -736,7 +736,7 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
     categoria = datos.get("categoria", "Objeto encontrado")
     emoji_categoria = INGRESO_EMOJIS.get(categoria, "❓")
     return (
-        "📯 Registrado en los libros\n"
+        "📯 Transacción registrada\n"
         f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
         f"• 🔖 Categoría: {emoji_categoria} {categoria}\n"
         f"• 🪶 Descripción: {datos.get('descripcion')}\n"
@@ -994,7 +994,7 @@ def formatear_confirmacion(datos: dict) -> str:
     categoria = datos.get("categoria", "Miscelánea")
     emoji_categoria = CATEGORIA_EMOJIS.get(categoria, "❓")
     return (
-        "📯 Registrado en los libros\n"
+        "📯 Transacción registrada\n"
         f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
         f"• 🔖 Categoría: {emoji_categoria} {categoria}\n"
         f"• 🪶 Descripción: {datos.get('descripcion')}\n"
@@ -1009,7 +1009,7 @@ def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
         return "🧌 No pude leer ningún movimiento en ese pergamino. ¿Tienes una imagen más clara?"
 
     fecha_str, hora_str = formatear_fecha_hora_actual()
-    lineas = [f"📯 {total} movimientos añadidos a la crónica", f"🌔 {fecha_str} — ⏳ {hora_str}", ""]
+    lineas = [f"📯 {total} Transacciones registradas", f"🌔 {fecha_str} — ⏳ {hora_str}", ""]
 
     if gastos:
         total_gastos = sum(float(g.get("monto", 0)) for g in gastos)
