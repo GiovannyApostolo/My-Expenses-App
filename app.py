@@ -738,7 +738,7 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
     return (
         "📯 Transacción registrada\n"
         f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
-        f"• 🔖 Categoría: {emoji_categoria} {categoria}\n"
+        f"• 🔖 Categoría: {categoria} {emoji_categoria}\n"
         f"• 🪶 Descripción: {datos.get('descripcion')}\n"
         f"• 🌔 Fecha: {fecha_str}\n"
         f"• ⌛️ Hora: {hora_str}\n"
@@ -996,7 +996,7 @@ def formatear_confirmacion(datos: dict) -> str:
     return (
         "📯 Transacción registrada\n"
         f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
-        f"• 🔖 Categoría: {emoji_categoria} {categoria}\n"
+        f"• 🔖 Categoría: {categoria} {emoji_categoria}\n"
         f"• 🪶 Descripción: {datos.get('descripcion')}\n"
         f"• 🌔 Fecha: {fecha_str}\n"
         f"• ⌛️ Hora: {hora_str}\n"
