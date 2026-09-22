@@ -327,6 +327,21 @@ async def actualizar_categoria_gasto(gasto_id: str, categoria_nueva: str) -> boo
         return False
     return True
 
+async def eliminar_gasto_en_supabase(gasto_id: str) -> bool:
+    url = f"{SUPABASE_URL}/rest/v1/gastos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Prefer": "return=minimal",
+    }
+    params = {"id": f"eq.{gasto_id}"}
+    respuesta = await request_con_reintentos("DELETE", url, headers, params=params)
+    if respuesta is None or respuesta.status_code not in (200, 204):
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        print(f"⚠️ Error eliminando gasto en Supabase: {codigo}")
+        return False
+    return True
+
 def resolver_categoria(categoria_texto: str, categorias_validas: list):
     if not categoria_texto:
         return None
