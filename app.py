@@ -46,7 +46,7 @@ CATEGORIAS = [
     "Taberna",
     "Provisiones",
     "Movilidad y monturas",
-    "Servicios Activos",
+    "Servicios activos",
     "Refugio y suministros",
     "Adquisiciones",
     "Ofrendas",
@@ -62,7 +62,7 @@ ACLARACION_CATEGORIAS = (
     "Distingue bien entre estas categorías que se prestan a confusión:\n"
     "- 'Taberna': comer/beber fuera de casa (restaurantes, bares, cafeterías, "
     "comida a domicilio) y entretenimiento puntual (cine, conciertos, videojuegos, salidas).\n"
-    "- 'Servicios Activos': CUALQUIER pago recurrente/periódico, sea de entretenimiento o no "
+    "- 'Servicios activos': CUALQUIER pago recurrente/periódico, sea de entretenimiento o no "
     "(Netflix, Spotify, Tidal, iCloud/Apple Cloud, Google Cloud, ChatGPT Plus, Suno, hosting, "
     "dominios, gimnasio con cuota mensual, etc.).\n"
     "- 'Fugas de Oro': gastos pequeños, impulsivos y cotidianos hechos en la calle o al paso "
@@ -78,7 +78,7 @@ CATEGORIA_EMOJIS = {
     "Taberna": "🎪",
     "Provisiones": "🥖",
     "Movilidad y monturas": "🐫",
-    "Servicios Activos": "🔮",
+    "Servicios activos": "🔮",
     "Refugio y suministros": "🏰",
     "Adquisiciones": "🏺",
     "Ofrendas": "💎",
@@ -416,7 +416,7 @@ ALIASES_CATEGORIA = {
     "restauracion": "Taberna", "ocio": "Taberna",
     "supermercado": "Provisiones", "super": "Provisiones",
     "transporte": "Movilidad y monturas", "vehiculo": "Movilidad y monturas", "gasolina": "Movilidad y monturas",
-    "suscripciones": "Servicios Activos", "suscripcion": "Servicios Activos", "subscripciones": "Servicios Activos", "subscripcion": "Servicios Activos",
+    "suscripciones": "Servicios activos", "suscripcion": "Servicios activos", "subscripciones": "Servicios activos", "subscripcion": "Servicios activos",
     "vivienda": "Refugio y suministros", "servicios": "Refugio y suministros", "alquiler": "Refugio y suministros",
     "compras": "Adquisiciones",
     "regalos": "Ofrendas", "regalo": "Ofrendas", "cumpleanos": "Ofrendas",
