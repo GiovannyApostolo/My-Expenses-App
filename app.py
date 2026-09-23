@@ -1611,33 +1611,33 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 descripcion_buscada = datos_eliminar.get("descripcion_buscada", "") or ""
                 tipo_sugerido = datos_eliminar.get("tipo", "desconocido")
                 await manejar_eliminacion(numero_remitente, descripcion_buscada, tipo_sugerido)
-elif periodo:
-    # El usuario pidió un resumen/informe (opcionalmente filtrado por categoría,
-    # y opcionalmente con mes/trimestre específico, ej. "resumen de julio").
-    desde, hasta, etiqueta = resolver_periodo(texto, periodo)
+            elif periodo:
+                # El usuario pidió un resumen/informe (opcionalmente filtrado por categoría,
+                # y opcionalmente con mes/trimestre específico, ej. "resumen de julio").
+                desde, hasta, etiqueta = resolver_periodo(texto, periodo)
 
-    if detectar_referencia_ingresos(texto):
-        categoria_ingreso = detectar_categoria_ingreso_informe(texto)
-        if categoria_ingreso:
-            ingresos = await obtener_ingresos(numero_remitente, desde, hasta, categoria_ingreso)
-            informe = generar_texto_informe_ingresos(etiqueta, ingresos, categoria_ingreso)
-            print(f"📜 Informe de ingresos '{etiqueta}' / {categoria_ingreso} generado para {numero_remitente} ({len(ingresos)} ingresos)")
-            await enviar_mensaje_whatsapp(numero_remitente, informe)
-        else:
-            gastos = await obtener_gastos(numero_remitente, desde, hasta)
-            ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
-            informe = generar_texto_informe(etiqueta, gastos, ingresos)
-            print(f"📜 Informe general '{etiqueta}' generado para {numero_remitente} ({len(gastos)} gastos, {len(ingresos)} ingresos)")
-            await enviar_mensaje_whatsapp(numero_remitente, informe)
-    else:
-        # Caso normal: informe de GASTOS, opcionalmente filtrado por categoría
-        # (ej. "cuánto he gastado en Taberna este mes")
-        categoria = detectar_categoria_informe(texto)
-        gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
-        ingresos = [] if categoria else await obtener_ingresos(numero_remitente, desde, hasta)
-        informe = generar_texto_informe(etiqueta, gastos, ingresos, categoria)
-        print(f"📜 Informe '{etiqueta}'{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
-        await enviar_mensaje_whatsapp(numero_remitente, informe)
+                if detectar_referencia_ingresos(texto):
+                    categoria_ingreso = detectar_categoria_ingreso_informe(texto)
+                    if categoria_ingreso:
+                        ingresos = await obtener_ingresos(numero_remitente, desde, hasta, categoria_ingreso)
+                        informe = generar_texto_informe_ingresos(etiqueta, ingresos, categoria_ingreso)
+                        print(f"📜 Informe de ingresos '{etiqueta}' / {categoria_ingreso} generado para {numero_remitente} ({len(ingresos)} ingresos)")
+                        await enviar_mensaje_whatsapp(numero_remitente, informe)
+                    else:
+                        gastos = await obtener_gastos(numero_remitente, desde, hasta)
+                        ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
+                        informe = generar_texto_informe(etiqueta, gastos, ingresos)
+                        print(f"📜 Informe general '{etiqueta}' generado para {numero_remitente} ({len(gastos)} gastos, {len(ingresos)} ingresos)")
+                        await enviar_mensaje_whatsapp(numero_remitente, informe)
+                else:
+                    # Caso normal: informe de GASTOS, opcionalmente filtrado por categoría
+                    # (ej. "cuánto he gastado en Taberna este mes")
+                    categoria = detectar_categoria_informe(texto)
+                    gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
+                    ingresos = [] if categoria else await obtener_ingresos(numero_remitente, desde, hasta)
+                    informe = generar_texto_informe(etiqueta, gastos, ingresos, categoria)
+                    print(f"📜 Informe '{etiqueta}'{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
+                    await enviar_mensaje_whatsapp(numero_remitente, informe)
             elif detectar_solicitud_porcentaje(texto):
                 # El usuario pidió un porcentaje (ej. "qué % de mis gastos/ingresos es ocio")
                 categoria = detectar_categoria_informe(texto)
