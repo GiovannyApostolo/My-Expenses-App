@@ -19,7 +19,7 @@ IDS_PROCESADOS = set()
 ORDEN_IDS = []
 MAX_IDS_GUARDADOS = 500
 
-def ya_procesado(message_id: str) -> bool:
+def ya_procesado_en_memoria(message_id: str) -> bool:
     if message_id in IDS_PROCESADOS:
         return True
     IDS_PROCESADOS.add(message_id)
@@ -27,6 +27,42 @@ def ya_procesado(message_id: str) -> bool:
     if len(ORDEN_IDS) > MAX_IDS_GUARDADOS:
         viejo = ORDEN_IDS.pop(0)
         IDS_PROCESADOS.discard(viejo)
+    return False
+
+async def _registrar_id_en_supabase(message_id: str) -> bool:
+    """Intenta insertar el id en la tabla de deduplicación persistente (mensajes_procesados).
+    Devuelve True si ya existía (duplicado real), False si se insertó como nuevo o si la
+    tabla/Supabase no están disponibles (en ese caso no bloqueamos nada, simplemente no hay
+    respaldo persistente para ese mensaje)."""
+    url = f"{SUPABASE_URL}/rest/v1/mensajes_procesados"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=ignore-duplicates,return=representation",
+    }
+    respuesta = await request_con_reintentos(
+        "POST", url, headers, json_payload={"message_id": message_id}, intentos=1
+    )
+    if respuesta is None or respuesta.status_code not in (200, 201):
+        return False
+    filas = respuesta.json()
+    return len(filas) == 0  # vacío = el id ya existía y "ignore-duplicates" lo descartó
+
+async def ya_procesado(message_id: str) -> bool:
+    """Deduplica mensajes entrantes. Primero comprueba en memoria (cubre el caso común de
+    reintentos inmediatos de Meta sin llamar a Supabase). Si no estaba en memoria, además
+    intenta registrar el id en la tabla 'mensajes_procesados' de Supabase para sobrevivir a
+    reinicios del proceso (Render puede reiniciar/redeployar el contenedor); si esa llamada
+    falla por cualquier motivo (tabla inexistente, Supabase caído, timeout), se ignora
+    silenciosamente y el flujo sigue exactamente como con solo la deduplicación en memoria."""
+    if ya_procesado_en_memoria(message_id):
+        return True
+    try:
+        if await _registrar_id_en_supabase(message_id):
+            return True
+    except Exception as e:
+        print(f"⚠️ No se pudo verificar deduplicación en Supabase (se ignora): {type(e).__name__}: {e}")
     return False
 
 # --- 1. CONFIGURACIÓN Y VARIABLES DE ENTORNO (De Render) ---
@@ -50,7 +86,7 @@ CATEGORIAS = [
     "Refugio y suministros",
     "Adquisiciones",
     "Ofrendas",
-    "Compañero",
+    "Compañero"
     "Salud y estamina",
     "Conocimiento",
     "Tributos y finanzas",
@@ -151,30 +187,43 @@ async def request_con_reintentos(metodo, url, headers, json_payload=None, params
     return None
 
 # --- 2. FUNCIONES DE INTELIGENCIA ARTIFICIAL ---
+def _es_error_saturacion(e) -> bool:
+    texto = str(e)
+    return "503" in texto or "UNAVAILABLE" in texto or "429" in texto
+
+async def _generar_con_modelo(modelo: str, contenido, intentos: int):
+    """Intenta generar contenido con un modelo concreto, reintentando en caso de saturación
+    (503/UNAVAILABLE/429). Devuelve el JSON parseado si tiene éxito, o lanza la última
+    excepción si se agotan los intentos."""
+    ultimo_error = None
+    for intento in range(1, intentos + 1):
+        try:
+            respuesta = client.models.generate_content(
+                model=modelo,
+                contents=contenido,
+                config=GENERATION_CONFIG,
+            )
+            return json.loads(respuesta.text)
+        except Exception as e:
+            ultimo_error = e
+            if _es_error_saturacion(e) and intento < intentos:
+                print(f"⏳ {modelo} saturado, intento {intento}/{intentos}, reintentando...")
+                await asyncio.sleep(3 * intento)
+                continue
+            break
+    raise ultimo_error
+
 async def generar_con_reintentos(contenido, intentos=3):
     ultimo_error = None
     for modelo_actual in (MODELO, MODELO_RESPALDO):
-        for intento in range(1, intentos + 1):
-            try:
-                respuesta = client.models.generate_content(
-                    model=modelo_actual,
-                    contents=contenido,
-                    config=GENERATION_CONFIG,
-                )
-                return json.loads(respuesta.text)
-            except Exception as e:
-                ultimo_error = e
-                es_saturacion = "503" in str(e) or "UNAVAILABLE" in str(e) or "429" in str(e)
-                if es_saturacion and intento < intentos:
-                    print(f"⏳ {modelo_actual} saturado, intento {intento}/{intentos}, reintentando...")
-                    await asyncio.sleep(3 * intento)
-                    continue
-                break
-        es_saturacion_final = "503" in str(ultimo_error) or "UNAVAILABLE" in str(ultimo_error)
-        if modelo_actual == MODELO and es_saturacion_final:
-            print(f"🔄 {MODELO} saturado tras {intentos} intentos, probando modelo de respaldo {MODELO_RESPALDO}...")
-            continue
-        break
+        try:
+            return await _generar_con_modelo(modelo_actual, contenido, intentos)
+        except Exception as e:
+            ultimo_error = e
+            if modelo_actual == MODELO and _es_error_saturacion(e):
+                print(f"🔄 {MODELO} saturado tras {intentos} intentos, probando modelo de respaldo {MODELO_RESPALDO}...")
+                continue
+            break
 
     print(f"Error IA: {type(ultimo_error).__name__}: {ultimo_error}")
     return {"monto": 0.0, "categoria": "Error", "descripcion": "Error procesando"}
@@ -588,7 +637,7 @@ async def obtener_ingresos(numero: str, desde: datetime, hasta: datetime):
         return []
     return respuesta.json()
 
-async def obtener_ultimo_Botín_principal(numero: str):
+async def obtener_ultimo_botin_principal(numero: str):
     """El registro de ingreso de categoría 'Botín principal' más reciente, que marca el inicio
     del ciclo actual. None si el usuario nunca ha registrado uno."""
     url = f"{SUPABASE_URL}/rest/v1/ingresos"
@@ -1431,11 +1480,11 @@ async def cerrar_ciclo_y_registrar_ahorro_si_corresponde(numero_remitente: str, 
     if datos_ingreso.get("categoria") != "Botín principal":
         return
 
-    ultimo_Botín = await obtener_ultimo_Botín_principal(numero_remitente)
-    if not ultimo_Botín:
+    ultimo_botin = await obtener_ultimo_botin_principal(numero_remitente)
+    if not ultimo_botin:
         return  # primer Botín principal: no hay ciclo previo que cerrar
 
-    desde = datetime.fromisoformat(ultimo_Botín["fecha"]).astimezone(ZONA_HORARIA)
+    desde = datetime.fromisoformat(ultimo_botin["fecha"]).astimezone(ZONA_HORARIA)
     hasta = datetime.now(ZONA_HORARIA)
 
     gastos_ciclo = await obtener_gastos(numero_remitente, desde, hasta)
@@ -1688,7 +1737,7 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
                 numero_remitente = message["from"]
                 message_id = message.get("id", "")
 
-                if ya_procesado(message_id):
+                if await ya_procesado(message_id):
                     print(f"🔁 Mensaje duplicado ignorado: {message_id}")
                 else:
                     # Se procesa en segundo plano; respondemos a Meta de inmediato.
