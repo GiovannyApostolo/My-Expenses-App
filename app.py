@@ -108,13 +108,6 @@ INGRESO_EMOJIS = {
     "Oro recuperado": "🫱🏼‍🫲🏽",
 }
 
-INGRESO_EMOJIS_NORM = {normalizar(k): v for k, v in INGRESO_EMOJIS.items()}
-
-def emoji_ingreso(categoria: str) -> str:
-    """Busca el emoji de una categoría de ingreso de forma tolerante a tildes/mayúsculas,
-    para no perder el emoji por variaciones en cómo quedó guardado el texto."""
-    return INGRESO_EMOJIS_NORM.get(normalizar(categoria or ""), "❓")
-
 def formatear_fecha_hora_actual():
     ahora = datetime.now(ZONA_HORARIA)
     fecha_str = f"{ahora.day} de {MESES_ES_ABREV[ahora.month]} de {ahora.year}"
@@ -661,6 +654,13 @@ def normalizar(texto: str) -> str:
     texto = texto.lower()
     texto = "".join(c for c in unicodedata.normalize("NFD", texto) if unicodedata.category(c) != "Mn")
     return texto
+
+INGRESO_EMOJIS_NORM = {normalizar(k): v for k, v in INGRESO_EMOJIS.items()}
+
+def emoji_ingreso(categoria: str) -> str:
+    """Busca el emoji de una categoría de ingreso de forma tolerante a tildes/mayúsculas,
+    para no perder el emoji por variaciones en cómo quedó guardado el texto."""
+    return INGRESO_EMOJIS_NORM.get(normalizar(categoria or ""), "❓")
 
 PALABRAS_INFORME = [
     "resumen", "informe", "reporte", "detalle", "detallame", "detalla", "muestrame",
@@ -1411,7 +1411,7 @@ async def manejar_eliminacion(numero_remitente: str, descripcion_buscada: str, t
 
     if es_ingreso:
         ok = await eliminar_ingreso(candidato["id"])
-        emoji_cat = emoji_ingremoji_ingreso(candidato.get("categoria"))eso(cat)
+        emoji_cat = emoji_ingreso(candidato.get("categoria"))
     else:
         ok = await eliminar_gasto(candidato["id"])
         emoji_cat = CATEGORIA_EMOJIS.get(candidato.get("categoria"), "❓")
