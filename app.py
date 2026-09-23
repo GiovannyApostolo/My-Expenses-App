@@ -917,11 +917,14 @@ def formatear_linea_transaccion(item: dict) -> str:
     descripcion = item.get("descripcion", "")
     return f"• {descripcion} - {formatear_monto_corto(item.get('monto', 0))}"
 
-def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria: str = None) -> str:
+def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria: str = None, porcentaje: float = None) -> str:
     # --- Informe filtrado por una sola categoría de gasto (sin sección de ingresos/balance) ---
     if categoria:
         emoji_cat = CATEGORIA_EMOJIS.get(categoria, "❓")
-        titulo = f"📜 Crónica de {etiqueta}\n\n{emoji_cat} {categoria}"
+        encabezado = f"{emoji_cat} {categoria}"
+        if porcentaje is not None:
+            encabezado += f": {porcentaje:.1f}%"
+        titulo = f"📜 Crónica de {etiqueta}\n\n {encabezado}"
         if not gastos:
             return f"{titulo}\n\nTus arcas descansan sin gastos durante este período. 🎊"
         total = sum(float(g["monto"]) for g in gastos)
@@ -1671,19 +1674,28 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 # El usuario pidió un porcentaje (ej. "qué % de mis gastos/ingresos es ocio")
                 categoria = detectar_categoria_informe(texto)
                 periodo_pct = detectar_periodo_generico(texto, default="mensual")
-                desde, hasta = calcular_rango_fechas(periodo_pct)
-                gastos = await obtener_gastos(numero_remitente, desde, hasta)  # sin filtro: necesitamos el total
-                ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
-                total_ingresos = sum(float(i["monto"]) for i in ingresos)
 
                 if categoria:
-                    # Pregunta por una categoría concreta: se mantiene el mensaje corto de siempre
+                    # Categoría concreta: mismo formato que la crónica, con el % junto al nombre
+                    desde, hasta, etiqueta = resolver_periodo(texto, periodo_pct)
+                    todos_gastos = await obtener_gastos(numero_remitente, desde, hasta)
+                    gastos_cat = [g for g in todos_gastos if g.get("categoria") == categoria]
+                    total_cat = sum(float(g["monto"]) for g in gastos_cat)
+
                     if detectar_referencia_ingresos(texto):
-                        mensaje_pct = generar_texto_porcentaje_ingresos(periodo_pct, gastos, total_ingresos, categoria)
+                        ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
+                        base = sum(float(i["monto"]) for i in ingresos)
                     else:
-                        mensaje_pct = generar_texto_porcentaje(periodo_pct, gastos, categoria)
+                        base = sum(float(g["monto"]) for g in todos_gastos)
+
+                    porcentaje = (total_cat / base) * 100 if base > 0 else 0.0
+                    mensaje_pct = generar_texto_informe(etiqueta, gastos_cat, [], categoria, porcentaje)
                 else:
-                    # Reparto general: formato nuevo
+                    # Reparto general: formato de "Reparto del tesoro"
+                    desde, hasta = calcular_rango_fechas(periodo_pct)
+                    gastos = await obtener_gastos(numero_remitente, desde, hasta)
+                    ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
+                    total_ingresos = sum(float(i["monto"]) for i in ingresos)
                     mensaje_pct = generar_texto_reparto(periodo_pct, gastos, total_ingresos)
 
                 print(f"📜 Porcentaje {periodo_pct}{' / ' + categoria if categoria else ''} generado para {numero_remitente}")
