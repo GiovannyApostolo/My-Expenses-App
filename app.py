@@ -921,7 +921,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
     # --- Informe filtrado por una sola categoría de gasto (sin sección de ingresos/balance) ---
     if categoria:
         emoji_cat = CATEGORIA_EMOJIS.get(categoria, "❓")
-        titulo = f"📜 Crónica de {etiqueta}\n • {categoria} {emoji_cat}"
+        titulo = f"📜 Crónica de {etiqueta}\n • {emoji_cat} {categoria}"
         if not gastos:
             return f"{titulo}\n\nTus arcas descansan sin gastos durante este período. 🎊"
         total = sum(float(g["monto"]) for g in gastos)
