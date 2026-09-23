@@ -97,11 +97,11 @@ CATEGORIA_EMOJIS = {
 # coincidan con las claves reales de INGRESO_EMOJIS (en el reskin original esas dos
 # categorías se quedaban sin emoji propio y caían siempre en "🧺"). "Oro recuperado"
 # queda como entrada de reserva sin usar, igual que "Reintegros" en el original.
-CATEGORIAS_INGRESO = ["Botin principal", "Contratos de mercenario", "Recompensas extra", "Ofrenda de aliados", "Objeto encontrado"]
+CATEGORIAS_INGRESO = ["Botín principal", "Contratos de mercenario", "Recompensas extra", "Ofrenda de aliados", "Objeto encontrado"]
 CATEGORIAS_INGRESO_TEXTO = ", ".join(CATEGORIAS_INGRESO)
 INGRESO_EMOJIS = {
-    "Botin principal": "🪎",
-    "Botin de mercenario": "🗡️",
+    "Botín principal": "🪎",
+    "Botín de mercenario": "🗡️",
     "Recompensas extra": "✨",
     "Ofrenda de aliados": "💎",
     "Objeto encontrado": "🧺",
@@ -256,7 +256,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     Analiza el mensaje del usuario:
     - Si describe un GASTO real (algo que compró, pagó o gastó, con o sin monto explícito),
       responde: {{"intencion": "gasto"}}
-    - Si describe un INGRESO real (dinero que recibió: Botin principal, Contratos de mercenario, regalo, venta, reintegro, etc.),
+    - Si describe un INGRESO real (dinero que recibió: Botín principal, Contratos de mercenario, regalo, venta, reintegro, etc.),
       responde: {{"intencion": "ingreso"}}
     - Si pide CAMBIAR/CORREGIR la categoría de un gasto que ya registró antes (identificándolo
       por su descripción o nombre, ej. "pon el gasto de Jennifer González en Refugio y suministros"),
@@ -588,8 +588,8 @@ async def obtener_ingresos(numero: str, desde: datetime, hasta: datetime):
         return []
     return respuesta.json()
 
-async def obtener_ultimo_botin_principal(numero: str):
-    """El registro de ingreso de categoría 'Botin principal' más reciente, que marca el inicio
+async def obtener_ultimo_Botín_principal(numero: str):
+    """El registro de ingreso de categoría 'Botín principal' más reciente, que marca el inicio
     del ciclo actual. None si el usuario nunca ha registrado uno."""
     url = f"{SUPABASE_URL}/rest/v1/ingresos"
     headers = {
@@ -598,7 +598,7 @@ async def obtener_ultimo_botin_principal(numero: str):
     }
     params = {
         "numero": f"eq.{numero}",
-        "categoria": "eq.Botin principal",
+        "categoria": "eq.Botín principal",
         "select": "id,fecha",
         "order": "fecha.desc",
         "limit": "1",
@@ -1422,20 +1422,20 @@ async def manejar_respuesta_a_transaccion(numero_remitente: str, wamid_original:
     return True
 
 async def cerrar_ciclo_y_registrar_ahorro_si_corresponde(numero_remitente: str, datos_ingreso: dict):
-    """Se llama justo ANTES de guardar un nuevo ingreso. Si ese ingreso es un 'Botin principal'
+    """Se llama justo ANTES de guardar un nuevo ingreso. Si ese ingreso es un 'Botín principal'
     y ya existía uno anterior, cierra el ciclo que termina ahora: calcula el balance total
     (todos los ingresos, incluido ese Botín anterior, menos todos los gastos) desde la fecha
     del Botín anterior hasta este instante, lo guarda en la tabla 'ahorros', avisa al usuario,
     y envía por WhatsApp el Excel de ese ciclo recién cerrado. Si es el primer Botín principal
     que registra el usuario, no hay ciclo anterior que cerrar y no hace nada."""
-    if datos_ingreso.get("categoria") != "Botin principal":
+    if datos_ingreso.get("categoria") != "Botín principal":
         return
 
-    ultimo_botin = await obtener_ultimo_botin_principal(numero_remitente)
-    if not ultimo_botin:
+    ultimo_Botín = await obtener_ultimo_Botín_principal(numero_remitente)
+    if not ultimo_Botín:
         return  # primer Botín principal: no hay ciclo previo que cerrar
 
-    desde = datetime.fromisoformat(ultimo_botin["fecha"]).astimezone(ZONA_HORARIA)
+    desde = datetime.fromisoformat(ultimo_Botín["fecha"]).astimezone(ZONA_HORARIA)
     hasta = datetime.now(ZONA_HORARIA)
 
     gastos_ciclo = await obtener_gastos(numero_remitente, desde, hasta)
