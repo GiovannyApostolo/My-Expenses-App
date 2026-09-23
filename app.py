@@ -948,17 +948,24 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
 
 # --- EXPORTAR EXCEL ---
 PALABRAS_EXPORTAR = ["exportar", "exporta"]
-
+ 
 def detectar_solicitud_exportar(texto: str) -> bool:
     texto_norm = normalizar(texto)
     return any(p in texto_norm for p in PALABRAS_EXPORTAR)
-
+ 
 MESES_ES = {
     1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
     7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre",
 }
+# Solo para mostrar la fecha en las confirmaciones de transacciones (ej. "23 de sep de 2026").
+# MESES_ES se mantiene completo porque de ahí sale MESES_ALIAS, usado para detectar qué mes
+# menciona el usuario en un informe/exportación (ej. "resumen de septiembre").
+MESES_ES_ABREV = {
+    1: "ene", 2: "feb", 3: "mar", 4: "abr", 5: "may", 6: "jun",
+    7: "jul", 8: "ago", 9: "sep", 10: "oct", 11: "nov", 12: "dic",
+}
 MESES_ALIAS = {normalizar(nombre): num for num, nombre in MESES_ES.items()}
-
+ 
 def detectar_mes_especifico(texto: str):
     texto_norm = normalizar(texto)
     for nombre_norm, num in MESES_ALIAS.items():
