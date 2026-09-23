@@ -679,6 +679,7 @@ ALIASES_CATEGORIA = {
     "transporte": "Movilidad y monturas", "vehiculo": "Movilidad y monturas", "gasolina": "Movilidad y monturas",
     "suscripciones": "Servicios activos", "suscripcion": "Servicios activos", "subscripciones": "Servicios activos", "subscripcion": "Servicios activos",
     "vivienda": "Refugio y suministros", "servicios": "Refugio y suministros", "alquiler": "Refugio y suministros",
+    "suministros": "Refugio y suministros", "vivienda y suministros": "Refugio y suministros",
     "compras": "Adquisiciones",
     "regalos": "Ofrendas", "regalo": "Ofrendas", "cumpleanos": "Ofrendas",
     "salud": "Salud y estamina", "cuidado personal": "Salud y estamina",
