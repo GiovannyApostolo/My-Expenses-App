@@ -50,6 +50,7 @@ CATEGORIAS = [
     "Refugio y suministros",
     "Adquisiciones",
     "Ofrendas",
+    "Compañero"
     "Salud y estamina",
     "Conocimiento",
     "Tributos y finanzas",
@@ -71,7 +72,8 @@ ACLARACION_CATEGORIAS = (
     "supermercado.\n"
     "_ 'Vicios': unicamente gastos en tabaco y cigarros.\n"
     "- 'Ofrendas': regalos para otras personas (cumpleanos, navidad, aniversarios, etc.), "
-    "distintos a otro tipo de compras (que va en 'Adquisiciones') "
+    "distintos a otro tipo de compras (que va en 'Adquisiciones')\n"
+    "_ 'Compañero': compras para mascotas como pienso, juguetes para perros, juguetes para conejos, etc"
 )
 
 CATEGORIA_EMOJIS = {
@@ -82,7 +84,7 @@ CATEGORIA_EMOJIS = {
     "Refugio y suministros": "🏰",
     "Adquisiciones": "🏺",
     "Ofrendas": "💎",
-    "Companero": "🐴",
+    "Compañero": "🐴",
     "Salud y estamina": "🍵",
     "Conocimiento": "📖",
     "Tributos y finanzas": "🪙",
