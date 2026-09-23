@@ -1169,7 +1169,7 @@ async def manejar_eliminacion(numero_remitente: str, descripcion_buscada: str, t
         await enviar_mensaje_whatsapp(
             numero_remitente,
             f"🧙🏻‍♂️ Registro eliminado de las arcas\n"
-            f"• {emoji_cat} {candidato.get('categoria')}{extra}" - {candidato.get('descripcion')} ({formatear_monto_corto(candidato.get('monto'))})\n"
+            f"• {emoji_cat} {candidato.get('categoria')}{extra}": {candidato.get('descripcion')} ({formatear_monto_corto(candidato.get('monto'))})\n"
         )
     else:
         await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo eliminar ese registro. Intenta de nuevo en un momento.")
