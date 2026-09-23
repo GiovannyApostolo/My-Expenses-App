@@ -101,7 +101,7 @@ CATEGORIAS_INGRESO = ["Botín principal", "Botín de mercenario", "Recompensas e
 CATEGORIAS_INGRESO_TEXTO = ", ".join(CATEGORIAS_INGRESO)
 INGRESO_EMOJIS = {
     "Botín principal": "🪎",
-    "Contratos de mercenario": "🗡️",
+    "Botín de mercenario": "🗡️",
     "Recompensas extra": "✨",
     "Ofrenda de aliados": "💎",
     "Objeto encontrado": "🧺",
