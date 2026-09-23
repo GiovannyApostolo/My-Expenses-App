@@ -50,7 +50,7 @@ CATEGORIAS = [
     "Refugio y suministros",
     "Adquisiciones",
     "Ofrendas",
-    "Compañero"
+    "Compañero",
     "Salud y estamina",
     "Conocimiento",
     "Tributos y finanzas",
