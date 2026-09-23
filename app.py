@@ -1790,13 +1790,13 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
                 numero_remitente = message["from"]
                 message_id = message.get("id", "")
 
-if ya_procesado(message_id):
-            print(f"🔁 Mensaje duplicado ignorado: {message_id}")
-        else:
-            # Se procesa en segundo plano; respondemos a Meta de inmediato.
-            background_tasks.add_task(procesar_mensaje_entrante, message, numero_remitente)
- 
-    except (KeyError, IndexError) as e:
-        print(f"⚠️ Error parseando webhook: {e}")
- 
+                if ya_procesado(message_id):
+                    print(f"🔁 Mensaje duplicado ignorado: {message_id}")
+                else:
+                    # Se procesa en segundo plano; respondemos a Meta de inmediato.
+                    background_tasks.add_task(procesar_mensaje_entrante, message, numero_remitente)
+
+        except (KeyError, IndexError) as e:
+            print(f"⚠️ Error parseando webhook: {e}")
+
     return {"status": "ok"}
