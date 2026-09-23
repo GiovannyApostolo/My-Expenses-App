@@ -151,19 +151,20 @@ def formatear_fecha_hora_actual():
     return fecha_str, hora_str
 
 MONEDA_SIMBOLO = "€"
-MONEDA_CODIGO = "EUR"
-
-def formatear_monto_corto(monto) -> str:
-    try:
-        return f"{MONEDA_SIMBOLO}{float(monto):.2f}"
-    except (TypeError, ValueError):
-        return f"{MONEDA_SIMBOLO}{monto}"
 
 def formatear_monto(monto) -> str:
+    """Formato español: 1.500,00 € (punto para miles, coma para decimales,
+    espacio de no separación antes del símbolo para que no se parta la línea)."""
     try:
-        return f"{MONEDA_SIMBOLO}{float(monto):.2f} {MONEDA_CODIGO}"
+        valor = float(monto)
     except (TypeError, ValueError):
-        return f"{MONEDA_SIMBOLO}{monto} {MONEDA_CODIGO}"
+        return f"{monto}\u00a0{MONEDA_SIMBOLO}"
+    texto = f"{valor:,.2f}"  # 1,500.00
+    texto = texto.replace(",", "X").replace(".", ",").replace("X", ".")  # 1.500,00
+    return f"{texto}\u00a0{MONEDA_SIMBOLO}"
+
+# Mismo formato en todas partes: se mantiene el nombre para no tocar el resto del código
+formatear_monto_corto = formatear_monto
 
 GENERATION_CONFIG = types.GenerateContentConfig(
     response_mime_type="application/json"
@@ -1002,20 +1003,19 @@ def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
         porcentaje = (monto_categoria / total) * 100
         return (
             f"📜 {categoria} representa el {porcentaje:.1f}% de tus gastos {etiqueta_periodo}\n"
-            f"({monto_categoria:.2f} de {total:.2f} en total)"
+            f"({formatear_monto(monto_categoria)} de {formatear_monto(total)} en total)"
         )
 
-    # Sin categoría específica: desglose de porcentaje por cada categoría
     por_categoria = {}
     for g in gastos:
         cat = g.get("categoria", "Miscelánea")
         por_categoria[cat] = por_categoria.get(cat, 0.0) + float(g["monto"])
 
-    lineas = [f"📜 Reparto del tesoro {etiqueta_periodo}", "", f"🪎 Total: {total:.2f}", ""]
+    lineas = [f"📜 Reparto del tesoro {etiqueta_periodo}", "", f"🪎 Total: {formatear_monto(total)}", ""]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total) * 100
         emoji_cat = CATEGORIA_EMOJIS.get(cat, "❓")
-        lineas.append(f"  {emoji_cat} {cat}: {porcentaje:.1f}% ({monto:.2f})")
+        lineas.append(f"  {emoji_cat} {cat}: {porcentaje:.1f}% ({formatear_monto(monto)})")
 
     return "\n".join(lineas)
 
@@ -1030,7 +1030,7 @@ def generar_texto_porcentaje_ingresos(periodo: str, gastos: list, total_ingresos
         porcentaje = (monto_categoria / total_ingresos) * 100
         return (
             f"📜 {categoria} representa el {porcentaje:.1f}% de tus ingresos {etiqueta_periodo}\n"
-            f"({monto_categoria:.2f} de {total_ingresos:.2f} de ingresos)"
+            f"({formatear_monto(monto_categoria)} de {formatear_monto(total_ingresos)} de ingresos)"
         )
 
     por_categoria = {}
@@ -1041,14 +1041,14 @@ def generar_texto_porcentaje_ingresos(periodo: str, gastos: list, total_ingresos
     total_gastos = sum(por_categoria.values())
     ahorro = total_ingresos - total_gastos
 
-    lineas = [f"📜 Gastos {etiqueta_periodo} sobre tus ingresos", "", f"🪎 Ingresos: {total_ingresos:.2f}", ""]
+    lineas = [f"📜 Gastos {etiqueta_periodo} sobre tus ingresos", "", f"🪎 Ingresos: {formatear_monto(total_ingresos)}", ""]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total_ingresos) * 100
         emoji_cat = CATEGORIA_EMOJIS.get(cat, "❓")
-        lineas.append(f"  {emoji_cat} {cat}: {porcentaje:.1f}% ({monto:.2f})")
+        lineas.append(f"  {emoji_cat} {cat}: {porcentaje:.1f}% ({formatear_monto(monto)})")
     porcentaje_ahorro = (ahorro / total_ingresos) * 100
     lineas.append("")
-    lineas.append(f"  🛡️ Reservas intactas: {porcentaje_ahorro:.1f}% ({ahorro:.2f})")
+    lineas.append(f"  🛡️ Reservas intactas: {porcentaje_ahorro:.1f}% ({formatear_monto(ahorro)})")
 
     return "\n".join(lineas)
 
@@ -1059,9 +1059,9 @@ def generar_texto_balance(periodo: str, total_ingresos: float, total_gastos: flo
     lineas = [
         f"⚖️ Balance de arcas {etiqueta_periodo}",
         "",
-        f"🪎 Botín recaudado: {total_ingresos:.2f}",
-        f"🪽 Oro gastado: {total_gastos:.2f}",
-        f"🧮 Tesoro neto: {balance:.2f}",
+        f"🪎 Botín recaudado: {formatear_monto(total_ingresos)}",
+        f"🪽 Oro gastado: {formatear_monto(total_gastos)}",
+        f"🧮 Tesoro neto: {formatear_monto(balance)}",
     ]
     if total_ingresos > 0:
         pct_gastado = (total_gastos / total_ingresos) * 100
