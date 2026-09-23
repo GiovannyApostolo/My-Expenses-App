@@ -915,19 +915,21 @@ def resolver_periodo(texto: str, periodo_tipo: str):
 
 def formatear_linea_transaccion(item: dict) -> str:
     descripcion = item.get("descripcion", "")
-    return f". {descripcion} - {formatear_monto_corto(item.get('monto', 0))}"
+    return f"• {descripcion} - {formatear_monto_corto(item.get('monto', 0))}"
 
 def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria: str = None) -> str:
     # --- Informe filtrado por una sola categoría de gasto (sin sección de ingresos/balance) ---
-    if categoria:
+        if categoria:
         emoji_cat = CATEGORIA_EMOJIS.get(categoria, "❓")
         titulo = f"📜 Crónica de {etiqueta}\n • {emoji_cat} {categoria}"
         if not gastos:
             return f"{titulo}\n\nTus arcas descansan sin gastos durante este período. 🎊"
         total = sum(float(g["monto"]) for g in gastos)
-        lineas = [titulo, "", f"🪽 Desembolso total: {formatear_monto(total)}", ""]
+        lineas = [titulo, ""]
         for g in sorted(gastos, key=lambda x: x.get("fecha", "")):
             lineas.append(formatear_linea_transaccion(g))
+        lineas.append("")
+        lineas.append(f"🪽 Desembolso total: {formatear_monto(total)}")
         return "\n".join(lineas)
 
     # --- Informe general: gastos por categoría + ingresos por categoría + balance ---
