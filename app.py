@@ -108,7 +108,7 @@ INGRESO_EMOJIS = {
 
 def formatear_fecha_hora_actual():
     ahora = datetime.now(ZONA_HORARIA)
-    fecha_str = f"{ahora.day} de {MESES_ES[ahora.month]} de {ahora.year}"
+    fecha_str = f"{ahora.day} de {MESES_ES_ABREV[ahora.month]} de {ahora.year}"
     hora_str = ahora.strftime("%H:%M")
     return fecha_str, hora_str
 
@@ -586,6 +586,51 @@ async def obtener_ingresos(numero: str, desde: datetime, hasta: datetime):
         return []
     return respuesta.json()
 
+async def obtener_ultimo_botin_principal(numero: str):
+    """El registro de ingreso de categoría 'Botin principal' más reciente, que marca el inicio
+    del ciclo actual. None si el usuario nunca ha registrado uno."""
+    url = f"{SUPABASE_URL}/rest/v1/ingresos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+    }
+    params = {
+        "numero": f"eq.{numero}",
+        "categoria": "eq.Botin principal",
+        "select": "id,fecha",
+        "order": "fecha.desc",
+        "limit": "1",
+    }
+    respuesta = await request_con_reintentos("GET", url, headers, params=params)
+    if respuesta is None or respuesta.status_code != 200:
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        print(f"⚠️ Error consultando el último Botín principal en Supabase: {codigo}")
+        return None
+    filas = respuesta.json()
+    return filas[0] if filas else None
+
+async def guardar_ahorro(numero: str, monto: float, ciclo_desde: datetime, ciclo_hasta: datetime):
+    """Guarda el balance de un ciclo cerrado (positivo = se sumó a la fortuna, negativo = se
+    restó) en la tabla 'ahorros', separada de gastos/ingresos."""
+    url = f"{SUPABASE_URL}/rest/v1/ahorros"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    payload = {
+        "numero": numero,
+        "monto": monto,
+        "ciclo_desde": ciclo_desde.isoformat(),
+        "ciclo_hasta": ciclo_hasta.isoformat(),
+    }
+    respuesta = await request_con_reintentos("POST", url, headers, json_payload=payload)
+    if respuesta is None or respuesta.status_code not in (200, 201):
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        texto = respuesta.text if respuesta else ""
+        print(f"⚠️ Error guardando ahorro en Supabase: {codigo} - {texto}")
+
 # --- 4. DETECCIÓN Y GENERACIÓN DE INFORMES ---
 def normalizar(texto: str) -> str:
     texto = texto.lower()
@@ -948,11 +993,11 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
 
 # --- EXPORTAR EXCEL ---
 PALABRAS_EXPORTAR = ["exportar", "exporta"]
- 
+
 def detectar_solicitud_exportar(texto: str) -> bool:
     texto_norm = normalizar(texto)
     return any(p in texto_norm for p in PALABRAS_EXPORTAR)
- 
+
 MESES_ES = {
     1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
     7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre",
@@ -965,7 +1010,7 @@ MESES_ES_ABREV = {
     7: "jul", 8: "ago", 9: "sep", 10: "oct", 11: "nov", 12: "dic",
 }
 MESES_ALIAS = {normalizar(nombre): num for num, nombre in MESES_ES.items()}
- 
+
 def detectar_mes_especifico(texto: str):
     texto_norm = normalizar(texto)
     for nombre_norm, num in MESES_ALIAS.items():
@@ -1374,6 +1419,49 @@ async def manejar_respuesta_a_transaccion(numero_remitente: str, wamid_original:
         await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo reclasificar ese registro. Intenta de nuevo en un momento.")
     return True
 
+async def cerrar_ciclo_y_registrar_ahorro_si_corresponde(numero_remitente: str, datos_ingreso: dict):
+    """Se llama justo ANTES de guardar un nuevo ingreso. Si ese ingreso es un 'Botin principal'
+    y ya existía uno anterior, cierra el ciclo que termina ahora: calcula el balance total
+    (todos los ingresos, incluido ese Botín anterior, menos todos los gastos) desde la fecha
+    del Botín anterior hasta este instante, lo guarda en la tabla 'ahorros', avisa al usuario,
+    y envía por WhatsApp el Excel de ese ciclo recién cerrado. Si es el primer Botín principal
+    que registra el usuario, no hay ciclo anterior que cerrar y no hace nada."""
+    if datos_ingreso.get("categoria") != "Botin principal":
+        return
+
+    ultimo_botin = await obtener_ultimo_botin_principal(numero_remitente)
+    if not ultimo_botin:
+        return  # primer Botín principal: no hay ciclo previo que cerrar
+
+    desde = datetime.fromisoformat(ultimo_botin["fecha"]).astimezone(ZONA_HORARIA)
+    hasta = datetime.now(ZONA_HORARIA)
+
+    gastos_ciclo = await obtener_gastos(numero_remitente, desde, hasta)
+    ingresos_ciclo = await obtener_ingresos(numero_remitente, desde, hasta)
+    total_gastos = sum(float(g["monto"]) for g in gastos_ciclo)
+    total_ingresos = sum(float(i["monto"]) for i in ingresos_ciclo)
+    balance = total_ingresos - total_gastos
+
+    await guardar_ahorro(numero_remitente, balance, desde, hasta)
+    print(f"🏛️ Ciclo cerrado para {numero_remitente}: balance {balance:.2f} ({desde.date()} - {hasta.date()})")
+
+    if balance >= 0:
+        mensaje_fortuna = f"🏛️ Has sumado {formatear_monto(balance)} a tu fortuna."
+    else:
+        mensaje_fortuna = f"🏛️ Has restado {formatear_monto(abs(balance))} a tu fortuna."
+    await enviar_mensaje_whatsapp(numero_remitente, mensaje_fortuna)
+
+    # Exportar automáticamente el resumen (Excel) del ciclo que se acaba de cerrar
+    etiqueta_ciclo = f"{desde.strftime('%d %b %Y')} – {hasta.strftime('%d %b %Y')}"
+    nombre_archivo = f"gastos_ciclo_{desde.strftime('%Y%m%d')}_{hasta.strftime('%Y%m%d')}.xlsx"
+    contenido_excel = generar_excel_gastos(gastos_ciclo, ingresos_ciclo)
+    media_id = await subir_documento_whatsapp(contenido_excel, nombre_archivo)
+    if media_id:
+        caption = f"🧧 Libro de cuentas — Ciclo cerrado ({etiqueta_ciclo})"
+        await enviar_documento_whatsapp(numero_remitente, media_id, nombre_archivo, caption)
+    else:
+        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El escriba no ha podido preparar el pergamino del ciclo cerrado, pero tu fortuna quedó registrada.")
+
 async def registrar_gasto_y_confirmar(numero_remitente: str, datos: dict):
     """Guarda el gasto, envía la confirmación y asocia el wamid del mensaje enviado al
     registro guardado, para poder reconocerlo después si el usuario responde sobre él."""
@@ -1388,9 +1476,10 @@ async def registrar_gasto_y_confirmar(numero_remitente: str, datos: dict):
 
 async def registrar_ingreso_y_confirmar(numero_remitente: str, datos: dict):
     """Guarda el ingreso, envía la confirmación y asocia el wamid del mensaje enviado al
-    registro guardado."""
+    registro guardado. Si es un Botín principal, primero cierra el ciclo anterior."""
     registro = None
     if datos.get("monto"):
+        await cerrar_ciclo_y_registrar_ahorro_si_corresponde(numero_remitente, datos)
         registro = await guardar_ingreso(numero_remitente, datos)
     wamid = await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion_ingreso(datos))
     if registro and wamid:
@@ -1517,7 +1606,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                                 await enviar_mensaje_whatsapp(
                                     numero_remitente,
                                     f"🧙🏻‍♂️ Registro reclasificado\n"
-                                    f"• {gasto.get('descripcion')} ({formatear_monto_corto(gasto.get('monto'))})\n 🪶"
+                                    f"• {gasto.get('descripcion')} ({formatear_monto_corto(gasto.get('monto'))}) 🪶\n"
                                     f"• Ahora está en: {categoria_nueva}{extra} {emoji_cat}"
                                 )
                             else:
@@ -1554,6 +1643,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
             ingresos_guardados = []
             for t in transacciones:
                 if t.get("tipo") == "Ingreso":
+                    await cerrar_ciclo_y_registrar_ahorro_si_corresponde(numero_remitente, t)
                     await guardar_ingreso(numero_remitente, t)
                     ingresos_guardados.append(t)
                 else:
