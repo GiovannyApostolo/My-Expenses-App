@@ -737,7 +737,7 @@ def detectar_periodo_informe(texto: str):
             return periodo
     return None
 
-PALABRAS_PORCENTAJE = ["porcentaje", "%", "que parte de mis gastos", "que fraccion"]
+PALABRAS_PORCENTAJE = ["porcentaje", "%", "que parte de mis gastos", "que fraccion", "distribucion", "reparto"]
 
 def detectar_solicitud_porcentaje(texto: str) -> bool:
     texto_norm = normalizar(texto)
@@ -1019,17 +1019,16 @@ def generar_texto_reparto(periodo: str, gastos: list, total_ingresos: float) -> 
     lineas = [
         f"📜 Reparto del tesoro {etiqueta_periodo}",
         "",
-        f"🪽 Desembolso total: {pct_gastos:.1f}% ({formatear_monto(total_gastos)})",
+        f"🪽 Desembolso total: {pct_gastos:.1f}%",
         "",
     ]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total_ingresos) * 100
         emoji_cat = CATEGORIA_EMOJIS.get(cat, "❓")
-        lineas.append(f"{emoji_cat} {cat}:")
-        lineas.append(f"• {porcentaje:.1f}% ({formatear_monto(monto)})")
+        lineas.append(f"{emoji_cat} {cat}: {porcentaje:.1f}%")
 
     lineas.append("")
-    lineas.append(f"🪎 Botín restante: {pct_restante:.1f}% ({formatear_monto(restante)})")
+    lineas.append(f"🪎 Botín restante: {pct_restante:.1f}%")
 
     return "\n".join(lineas)
 
