@@ -921,11 +921,11 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
     # --- Informe filtrado por una sola categoría de gasto (sin sección de ingresos/balance) ---
     if categoria:
         emoji_cat = CATEGORIA_EMOJIS.get(categoria, "❓")
-        titulo = f"📜 Crónica de {etiqueta}\n • {emoji_cat} {categoria}"
+        titulo = f"📜 Crónica de {etiqueta}\n\n {emoji_cat} {categoria}"
         if not gastos:
             return f"{titulo}\n\nTus arcas descansan sin gastos durante este período. 🎊"
         total = sum(float(g["monto"]) for g in gastos)
-        lineas = [titulo, ""]
+        lineas = [titulo]
         for g in sorted(gastos, key=lambda x: x.get("fecha", "")):
             lineas.append(formatear_linea_transaccion(g))
         lineas.append("")
@@ -981,13 +981,15 @@ def generar_texto_informe_ingresos(etiqueta: str, ingresos: list, categoria: str
     """Análogo a generar_texto_informe pero para un informe de INGRESOS filtrado por una
     categoría de ingreso concreta (ej. "cuánto he recibido de Contratos de mercenario")."""
     emoji_cat = INGRESO_EMOJIS.get(categoria, "❓")
-    titulo = f"📜 Crónica de {etiqueta}\n • {emoji_cat} {categoria}"
+    titulo = f"📜 Crónica de {etiqueta}\n\n {emoji_cat}{categoria}"
     if not ingresos:
         return f"{titulo}\n\nNo se han registrado botines de esta categoría durante este período. 🎊"
     total = sum(float(i["monto"]) for i in ingresos)
-    lineas = [titulo, "", f"🪎 Botín total: {formatear_monto(total)}", ""]
+    lineas = [titulo]
     for i in sorted(ingresos, key=lambda x: x.get("fecha", "")):
         lineas.append(formatear_linea_transaccion(i))
+    lineas.append("")
+    lineas.append(f"🪎 Botín total: {formatear_monto(total)}")
     return "\n".join(lineas)
 
 def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
