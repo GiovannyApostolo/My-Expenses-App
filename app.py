@@ -108,6 +108,13 @@ INGRESO_EMOJIS = {
     "Oro recuperado": "🫱🏼‍🫲🏽",
 }
 
+INGRESO_EMOJIS_NORM = {normalizar(k): v for k, v in INGRESO_EMOJIS.items()}
+
+def emoji_ingreso(categoria: str) -> str:
+    """Busca el emoji de una categoría de ingreso de forma tolerante a tildes/mayúsculas,
+    para no perder el emoji por variaciones en cómo quedó guardado el texto."""
+    return INGRESO_EMOJIS_NORM.get(normalizar(categoria or ""), "❓")
+
 def formatear_fecha_hora_actual():
     ahora = datetime.now(ZONA_HORARIA)
     fecha_str = f"{ahora.day} de {MESES_ES_ABREV[ahora.month]} de {ahora.year}"
@@ -931,7 +938,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
         lineas.append("")
         lineas.append("Desglose del inventario:")
         for cat, total_cat in sorted(por_categoria_ing.items(), key=lambda x: -x[1]):
-            emoji_cat = INGRESO_EMOJIS.get(cat, "❓")
+            emoji_cat = emoji_ingreso(cat)
             lineas.append(f"{emoji_cat} {cat}: {formatear_monto_corto(total_cat)}")
 
     balance = total_ingresos - total_gastos
@@ -948,7 +955,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
 def generar_texto_informe_ingresos(etiqueta: str, ingresos: list, categoria: str) -> str:
     """Análogo a generar_texto_informe pero para un informe de INGRESOS filtrado por una
     categoría de ingreso concreta (ej. "cuánto he recibido de Botín de mercenario")."""
-    emoji_cat = INGRESO_EMOJIS.get(categoria, "❓")
+    emoji_cat = emoji_ingreso(categoria)
     titulo = f"📜 Crónica de {etiqueta}\n\n{emoji_cat} {categoria}"
     if not ingresos:
         return f"{titulo}\n\nNo se han registrado botines de esta categoría durante este período. 🎊"
@@ -1054,7 +1061,7 @@ def formatear_confirmacion_ingreso(datos: dict) -> str:
         return "🧌 El heraldo no logró registrar ese botín. Inténtalo de nuevo."
     fecha_str, hora_str = formatear_fecha_hora_actual()
     categoria = datos.get("categoria", "Objeto encontrado")
-    emoji_categoria = INGRESO_EMOJIS.get(categoria, "❓")
+    emoji_categoria = emoji_ingreso(categoria)
     return (
         "📯 Transacción registrada\n"
         f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
@@ -1365,7 +1372,7 @@ def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
         total_ingresos = sum(float(i.get("monto", 0)) for i in ingresos)
         lineas.append(f"🪎 Ingresos ({formatear_monto_corto(total_ingresos)}):")
         for i in ingresos:
-            emoji_cat = INGRESO_EMOJIS.get(i.get("categoria", "Miscelánea"), "❓")
+            emoji_cat = emoji_ingreso(i.get("categoria", "Miscelánea"))
             lineas.append(f". {emoji_cat} {i.get('descripcion','')} — {i.get('categoria','')} - {formatear_monto_corto(i.get('monto', 0))}")
 
     return "\n".join(lineas).rstrip()
@@ -1404,7 +1411,7 @@ async def manejar_eliminacion(numero_remitente: str, descripcion_buscada: str, t
 
     if es_ingreso:
         ok = await eliminar_ingreso(candidato["id"])
-        emoji_cat = INGRESO_EMOJIS.get(candidato.get("categoria"), "❓")
+        emoji_cat = emoji_ingremoji_ingreso(candidato.get("categoria"))eso(cat)
     else:
         ok = await eliminar_gasto(candidato["id"])
         emoji_cat = CATEGORIA_EMOJIS.get(candidato.get("categoria"), "❓")
@@ -1448,7 +1455,7 @@ async def manejar_respuesta_a_transaccion(numero_remitente: str, wamid_original:
     if detectar_solicitud_eliminar(texto):
         if es_ingreso:
             ok = await eliminar_ingreso(registro["id"])
-            emoji_cat = INGRESO_EMOJIS.get(registro.get("categoria"), "❓")
+            emoji_cat = emoji_ingreso(registro.get("categoria"))
         else:
             ok = await eliminar_gasto(registro["id"])
             emoji_cat = CATEGORIA_EMOJIS.get(registro.get("categoria"), "❓")
@@ -1482,7 +1489,7 @@ async def manejar_respuesta_a_transaccion(numero_remitente: str, wamid_original:
 
     if es_ingreso:
         ok = await actualizar_categoria_ingreso(registro["id"], categoria_nueva)
-        emoji_cat = INGRESO_EMOJIS.get(categoria_nueva, "❓")
+        emoji_cat = emoji_ingreso(categoria_nueva)
     else:
         ok = await actualizar_categoria_gasto(registro["id"], categoria_nueva)
         emoji_cat = CATEGORIA_EMOJIS.get(categoria_nueva, "❓")
