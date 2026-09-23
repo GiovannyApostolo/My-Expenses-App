@@ -71,7 +71,7 @@ ACLARACION_CATEGORIAS = (
     "completa en restaurante (que va en 'Taberna') o de la compra grande de "
     "supermercado.\n"
     "_ 'Vicios': unicamente gastos en tabaco y cigarros.\n"
-    "- 'Ofrendas': regalos para otras personas (cumpleanos, navidad, aniversarios, etc.), "
+    "- 'Ofrendas': regalos para otras personas (cumpleaños, Navidad, aniversarios, etc.), "
     "distintos a otro tipo de compras (que va en 'Adquisiciones')\n"
     "_ 'Compañero': compras para mascotas como pienso, juguetes para perros, juguetes para conejos, etc"
 )
