@@ -1290,7 +1290,7 @@ async def manejar_eliminacion(numero_remitente: str, descripcion_buscada: str, t
             numero_remitente,
             f"🧙🏻‍♂️ Registro eliminado de las arcas\n"
             f"• {candidato.get('descripcion')} ({formatear_monto_corto(candidato.get('monto'))}) 🪶\n"
-            f"• {candidato.get('categoria')}{extra} {emoji_cat}"
+            f"• Categoria: {candidato.get('categoria')}{extra} {emoji_cat}"
         )
     else:
         await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo eliminar ese registro. Intenta de nuevo en un momento.")
@@ -1326,7 +1326,7 @@ async def manejar_respuesta_a_transaccion(numero_remitente: str, wamid_original:
                 numero_remitente,
                 f"🧙🏻‍♂️ Registro eliminado de las arcas\n"
                 f"• {registro.get('descripcion')} ({formatear_monto_corto(registro.get('monto'))}) 🪶\n"
-                f"• {registro.get('categoria')} {emoji_cat}"
+                f"• Categoria: {registro.get('categoria')} {emoji_cat}"
             )
         else:
             await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo eliminar ese registro. Intenta de nuevo en un momento.")
