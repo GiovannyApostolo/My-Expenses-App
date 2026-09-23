@@ -221,6 +221,24 @@ async def procesar_eliminacion_con_ia(texto_usuario: str) -> dict:
         return {"descripcion_buscada": "", "tipo": "desconocido"}
     return resultado
 
+async def extraer_categoria_con_ia(texto_usuario: str, categorias_validas: list):
+    """Se usa cuando el usuario responde a la confirmación de una transacción con un texto
+    libre que debería indicar la categoría correcta (ej. "esto es del super", "mejor ponlo en
+    ocio"), y ni la coincidencia exacta ni los alias conocidos lo resolvieron."""
+    lista_texto = ", ".join(categorias_validas)
+    prompt_sistema = f"""
+    El usuario está respondiendo a la confirmación de una transacción para indicar a qué
+    categoría pertenece. Dado su mensaje, determina a cuál de estas categorías se refiere:
+    [{lista_texto}].
+    Devuelve un JSON con esta estructura exacta: {{"categoria": "una de la lista, o '' si su
+    mensaje no parece referirse a ninguna categoría"}}
+    """
+    contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
+    resultado = await generar_con_reintentos(contenido)
+    if not isinstance(resultado, dict):
+        return None
+    return resolver_categoria(resultado.get("categoria", ""), categorias_validas)
+
 async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     """Se usa solo cuando ninguna palabra clave (informe/porcentaje/balance/exportar/ingreso/
     eliminar) coincidió con el mensaje. Decide si realmente es un gasto, un ingreso, una
@@ -301,12 +319,15 @@ async def procesar_imagen_transacciones_con_ia(imagen: Image.Image):
 
 # --- 3. BASE DE DATOS (SUPABASE) ---
 async def guardar_gasto(numero: str, datos: dict):
+    """Devuelve el registro insertado (incluye 'id') o None si falló. Necesitamos el id para
+    poder asociarle después el wamid de la confirmación y así permitir editar/eliminar
+    respondiendo a ese mensaje de WhatsApp."""
     url = f"{SUPABASE_URL}/rest/v1/gastos"
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json",
-        "Prefer": "return=minimal",
+        "Prefer": "return=representation",
     }
     payload = {
         "numero": numero,
@@ -319,6 +340,9 @@ async def guardar_gasto(numero: str, datos: dict):
         codigo = respuesta.status_code if respuesta else "sin respuesta"
         texto = respuesta.text if respuesta else ""
         print(f"⚠️ Error guardando gasto en Supabase: {codigo} - {texto}")
+        return None
+    filas = respuesta.json()
+    return filas[0] if filas else None
 
 async def buscar_gastos_por_descripcion(numero: str, descripcion_buscada: str, limite: int = 5):
     url = f"{SUPABASE_URL}/rest/v1/gastos"
@@ -360,6 +384,72 @@ async def buscar_ingresos_por_descripcion(numero: str, descripcion_buscada: str,
         return []
     return respuesta.json()
 
+async def buscar_gasto_por_wamid(numero: str, wamid: str):
+    """Encuentra el gasto asociado al mensaje de confirmación de WhatsApp con ese wamid,
+    para cuando el usuario responde ('desliza') sobre ese mensaje."""
+    url = f"{SUPABASE_URL}/rest/v1/gastos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+    }
+    params = {
+        "numero": f"eq.{numero}",
+        "wamid": f"eq.{wamid}",
+        "select": "id,monto,categoria,descripcion",
+        "limit": "1",
+    }
+    respuesta = await request_con_reintentos("GET", url, headers, params=params)
+    if respuesta is None or respuesta.status_code != 200:
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        print(f"⚠️ Error buscando gasto por wamid en Supabase: {codigo}")
+        return None
+    filas = respuesta.json()
+    return filas[0] if filas else None
+
+async def buscar_ingreso_por_wamid(numero: str, wamid: str):
+    url = f"{SUPABASE_URL}/rest/v1/ingresos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+    }
+    params = {
+        "numero": f"eq.{numero}",
+        "wamid": f"eq.{wamid}",
+        "select": "id,monto,categoria,descripcion",
+        "limit": "1",
+    }
+    respuesta = await request_con_reintentos("GET", url, headers, params=params)
+    if respuesta is None or respuesta.status_code != 200:
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        print(f"⚠️ Error buscando ingreso por wamid en Supabase: {codigo}")
+        return None
+    filas = respuesta.json()
+    return filas[0] if filas else None
+
+async def asociar_wamid_gasto(gasto_id: str, wamid: str) -> bool:
+    url = f"{SUPABASE_URL}/rest/v1/gastos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    params = {"id": f"eq.{gasto_id}"}
+    respuesta = await request_con_reintentos("PATCH", url, headers, json_payload={"wamid": wamid}, params=params)
+    return respuesta is not None and respuesta.status_code in (200, 204)
+
+async def asociar_wamid_ingreso(ingreso_id: str, wamid: str) -> bool:
+    url = f"{SUPABASE_URL}/rest/v1/ingresos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    params = {"id": f"eq.{ingreso_id}"}
+    respuesta = await request_con_reintentos("PATCH", url, headers, json_payload={"wamid": wamid}, params=params)
+    return respuesta is not None and respuesta.status_code in (200, 204)
+
 async def actualizar_categoria_gasto(gasto_id: str, categoria_nueva: str) -> bool:
     url = f"{SUPABASE_URL}/rest/v1/gastos"
     headers = {
@@ -374,6 +464,23 @@ async def actualizar_categoria_gasto(gasto_id: str, categoria_nueva: str) -> boo
     if respuesta is None or respuesta.status_code not in (200, 204):
         codigo = respuesta.status_code if respuesta else "sin respuesta"
         print(f"⚠️ Error actualizando categoría en Supabase: {codigo}")
+        return False
+    return True
+
+async def actualizar_categoria_ingreso(ingreso_id: str, categoria_nueva: str) -> bool:
+    url = f"{SUPABASE_URL}/rest/v1/ingresos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    params = {"id": f"eq.{ingreso_id}"}
+    payload = {"categoria": categoria_nueva}
+    respuesta = await request_con_reintentos("PATCH", url, headers, json_payload=payload, params=params)
+    if respuesta is None or respuesta.status_code not in (200, 204):
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        print(f"⚠️ Error actualizando categoría de ingreso en Supabase: {codigo}")
         return False
     return True
 
@@ -437,12 +544,13 @@ async def obtener_gastos(numero: str, desde: datetime, hasta: datetime, categori
     return respuesta.json()
 
 async def guardar_ingreso(numero: str, datos: dict):
+    """Devuelve el registro insertado (incluye 'id') o None si falló."""
     url = f"{SUPABASE_URL}/rest/v1/ingresos"
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json",
-        "Prefer": "return=minimal",
+        "Prefer": "return=representation",
     }
     payload = {
         "numero": numero,
@@ -455,6 +563,9 @@ async def guardar_ingreso(numero: str, datos: dict):
         codigo = respuesta.status_code if respuesta else "sin respuesta"
         texto = respuesta.text if respuesta else ""
         print(f"⚠️ Error guardando ingreso en Supabase: {codigo} - {texto}")
+        return None
+    filas = respuesta.json()
+    return filas[0] if filas else None
 
 async def obtener_ingresos(numero: str, desde: datetime, hasta: datetime):
     url = f"{SUPABASE_URL}/rest/v1/ingresos"
@@ -1061,6 +1172,9 @@ async def enviar_documento_whatsapp(numero_destino: str, media_id: str, filename
     return respuesta
 
 async def enviar_mensaje_whatsapp(numero_destino: str, texto: str):
+    """Envía el mensaje y devuelve el wamid (id del mensaje en WhatsApp) si se pudo obtener,
+    o None. El wamid se usa para poder asociar la confirmación de una transacción y así
+    reconocerla luego si el usuario responde ('desliza') sobre ese mensaje."""
     url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -1073,9 +1187,15 @@ async def enviar_mensaje_whatsapp(numero_destino: str, texto: str):
         "text": {"body": texto},
     }
     respuesta = await request_con_reintentos("POST", url, headers, json_payload=payload)
-    if respuesta is not None and respuesta.status_code != 200:
+    if respuesta is None:
+        return None
+    if respuesta.status_code != 200:
         print(f"⚠️ Error enviando mensaje a WhatsApp: {respuesta.status_code} - {respuesta.text}")
-    return respuesta
+        return None
+    try:
+        return respuesta.json()["messages"][0]["id"]
+    except (KeyError, IndexError, ValueError):
+        return None
 
 def formatear_confirmacion(datos: dict) -> str:
     if datos.get("categoria") == "Error":
@@ -1175,9 +1295,114 @@ async def manejar_eliminacion(numero_remitente: str, descripcion_buscada: str, t
     else:
         await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo eliminar ese registro. Intenta de nuevo en un momento.")
 
+async def manejar_respuesta_a_transaccion(numero_remitente: str, wamid_original: str, texto: str) -> bool:
+    """Se llama cuando el mensaje entrante es una RESPUESTA (el usuario deslizó/citó un mensaje
+    de confirmación). Busca a qué gasto o ingreso corresponde ese wamid y, si lo encuentra,
+    interpreta el texto como una orden de eliminar esa transacción o de cambiarle la categoría.
+    Devuelve True si el mensaje quedó gestionado por esta vía (aunque no encontrara la
+    transacción o no entendiera la orden), y False si el wamid no corresponde a ninguna
+    transacción conocida, para que el mensaje se procese de forma normal."""
+    gasto = await buscar_gasto_por_wamid(numero_remitente, wamid_original)
+    ingreso = None
+    if not gasto:
+        ingreso = await buscar_ingreso_por_wamid(numero_remitente, wamid_original)
+    if not gasto and not ingreso:
+        return False  # no es una respuesta a una confirmación de transacción conocida
+
+    registro = gasto or ingreso
+    es_ingreso = ingreso is not None
+
+    # --- ¿Pide eliminar esta transacción? ---
+    if detectar_solicitud_eliminar(texto):
+        if es_ingreso:
+            ok = await eliminar_ingreso(registro["id"])
+            emoji_cat = INGRESO_EMOJIS.get(registro.get("categoria"), "❓")
+        else:
+            ok = await eliminar_gasto(registro["id"])
+            emoji_cat = CATEGORIA_EMOJIS.get(registro.get("categoria"), "❓")
+        print(f"🧙🏻‍♂️ Eliminación por respuesta: '{registro.get('descripcion')}' ({numero_remitente})")
+        if ok:
+            await enviar_mensaje_whatsapp(
+                numero_remitente,
+                f"🧙🏻‍♂️ Registro eliminado de las arcas\n"
+                f"• {registro.get('descripcion')} ({formatear_monto_corto(registro.get('monto'))}) 🪶\n"
+                f"• {registro.get('categoria')} {emoji_cat}"
+            )
+        else:
+            await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo eliminar ese registro. Intenta de nuevo en un momento.")
+        return True
+
+    # --- Si no, se interpreta como un cambio de categoría ---
+    categorias_validas = CATEGORIAS_INGRESO if es_ingreso else CATEGORIAS
+    categoria_nueva = resolver_categoria(texto.strip(), categorias_validas)
+    if not categoria_nueva and not es_ingreso:
+        categoria_nueva = detectar_categoria_informe(texto)
+    if not categoria_nueva:
+        categoria_nueva = await extraer_categoria_con_ia(texto, categorias_validas)
+
+    if not categoria_nueva:
+        await enviar_mensaje_whatsapp(
+            numero_remitente,
+            "🧌 No reconocí esa categoría. Responde con el nombre de una categoría válida, "
+            "o escribe \"elimina\" para borrar este registro."
+        )
+        return True
+
+    if es_ingreso:
+        ok = await actualizar_categoria_ingreso(registro["id"], categoria_nueva)
+        emoji_cat = INGRESO_EMOJIS.get(categoria_nueva, "❓")
+    else:
+        ok = await actualizar_categoria_gasto(registro["id"], categoria_nueva)
+        emoji_cat = CATEGORIA_EMOJIS.get(categoria_nueva, "❓")
+
+    print(f"📝 Corrección de categoría por respuesta: '{registro.get('descripcion')}' -> {categoria_nueva} ({numero_remitente})")
+    if ok:
+        await enviar_mensaje_whatsapp(
+            numero_remitente,
+            f"🧙🏻‍♂️ Registro reclasificado\n"
+            f"• {registro.get('descripcion')} ({formatear_monto_corto(registro.get('monto'))}) 🪶\n"
+            f"• Ahora está en: {categoria_nueva} {emoji_cat}"
+        )
+    else:
+        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo reclasificar ese registro. Intenta de nuevo en un momento.")
+    return True
+
+async def registrar_gasto_y_confirmar(numero_remitente: str, datos: dict):
+    """Guarda el gasto, envía la confirmación y asocia el wamid del mensaje enviado al
+    registro guardado, para poder reconocerlo después si el usuario responde sobre él."""
+    if datos.get("categoria") == "Error":
+        await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
+        return
+    registro = await guardar_gasto(numero_remitente, datos)
+    wamid = await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
+    if registro and wamid:
+        await asociar_wamid_gasto(registro["id"], wamid)
+    await enviar_alerta_ahorro_si_corresponde(numero_remitente, datos.get("monto", 0))
+
+async def registrar_ingreso_y_confirmar(numero_remitente: str, datos: dict):
+    """Guarda el ingreso, envía la confirmación y asocia el wamid del mensaje enviado al
+    registro guardado."""
+    registro = None
+    if datos.get("monto"):
+        registro = await guardar_ingreso(numero_remitente, datos)
+    wamid = await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion_ingreso(datos))
+    if registro and wamid:
+        await asociar_wamid_ingreso(registro["id"], wamid)
+
 # --- 6. RUTAS DEL WEBHOOK ---
 async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
     try:
+        # Si el usuario respondió ("deslizó"/citó) un mensaje de confirmación de una
+        # transacción, tratamos ese caso aparte: puede pedir eliminarla o cambiarle la
+        # categoría, identificándola sin ambigüedad por el wamid del mensaje citado.
+        contexto = message.get("context")
+        if contexto and contexto.get("id") and message.get("type") == "text":
+            manejado = await manejar_respuesta_a_transaccion(
+                numero_remitente, contexto["id"], message["text"]["body"]
+            )
+            if manejado:
+                return
+
         # Procesar mensajes de texto
         if message["type"] == "text":
             texto = message["text"]["body"]
@@ -1253,9 +1478,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 # El usuario registró un ingreso (ej. "ingreso de 1500 sueldo")
                 datos_ingreso = await procesar_ingreso_con_ia(texto)
                 print(f"📯 Ingreso registrado: {datos_ingreso}")
-                if datos_ingreso.get("monto"):
-                    await guardar_ingreso(numero_remitente, datos_ingreso)
-                await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion_ingreso(datos_ingreso))
+                await registrar_ingreso_y_confirmar(numero_remitente, datos_ingreso)
             else:
                 # Ninguna palabra clave coincidió: en vez de asumir que es un gasto,
                 # le preguntamos a Gemini qué quiso decir realmente.
@@ -1265,9 +1488,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 if intencion == "ingreso":
                     datos_ingreso = await procesar_ingreso_con_ia(texto)
                     print(f"📯 Ingreso registrado (vía clasificador): {datos_ingreso}")
-                    if datos_ingreso.get("monto"):
-                        await guardar_ingreso(numero_remitente, datos_ingreso)
-                    await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion_ingreso(datos_ingreso))
+                    await registrar_ingreso_y_confirmar(numero_remitente, datos_ingreso)
 
                 elif intencion == "corregir_categoria":
                     descripcion_buscada = clasificacion.get("descripcion_buscada", "")
@@ -1289,7 +1510,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                                 await enviar_mensaje_whatsapp(
                                     numero_remitente,
                                     f"🧙🏻‍♂️ Registro reclasificado\n"
-                                    f"• {gasto.get('descripcion')} ({formatear_monto_corto(gasto.get('monto'))}) 🪶\n"
+                                    f"• {gasto.get('descripcion')} ({formatear_monto_corto(gasto.get('monto'))})\n 🪶"
                                     f"• Ahora está en: {categoria_nueva}{extra} {emoji_cat}"
                                 )
                             else:
@@ -1313,11 +1534,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     # "gasto" (o clasificación no reconocida, por seguridad)
                     datos = await procesar_gasto_con_ia(texto)
                     print(f"📯 Gasto registrado (Texto): {datos}")
-                    if datos.get("categoria") != "Error":
-                        await guardar_gasto(numero_remitente, datos)
-                    await enviar_mensaje_whatsapp(numero_remitente, formatear_confirmacion(datos))
-                    if datos.get("categoria") != "Error":
-                        await enviar_alerta_ahorro_si_corresponde(numero_remitente, datos.get("monto", 0))
+                    await registrar_gasto_y_confirmar(numero_remitente, datos)
 
         # Procesar fotos (recibo único o lista de transacciones bancarias)
         elif message["type"] == "image":
