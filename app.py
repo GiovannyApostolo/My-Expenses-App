@@ -693,10 +693,10 @@ def normalizar(texto: str) -> str:
 PALABRAS_INFORME = [
     "resumen", "informe", "reporte", "detalle", "detallame", "detalla", "muestrame",
     "cuanto gaste", "cuanto he gastado",
-    # frases tipo pregunta ("¿cuáles han sido mis gastos en X este mes?")
+    # nuevas frases tipo pregunta
     "cuales han sido", "cuales fueron", "cual ha sido", "cuales son",
-    "que gaste", "que he gastado", "cuanto llevo gastado", "cuanto llevo gastando",
-    "listame", "ensename", "dame el detalle", "dime mis gastos", "dime cuanto",
+    "que gaste", "que he gastado", "cuanto llevo gastado",
+    "listame", "dame el detalle", "ensename",
 ]
 PERIODOS = {
     "diario": ["diario", "diarios", "de hoy", "hoy"],
