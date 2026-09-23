@@ -992,34 +992,41 @@ def generar_texto_informe_ingresos(etiqueta: str, ingresos: list, categoria: str
     lineas.append(f"🪎 Botín total: {formatear_monto(total)}")
     return "\n".join(lineas)
 
-def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
+def generar_texto_reparto(periodo: str, gastos: list, total_ingresos: float) -> str:
+    """Reparto general de gastos con porcentajes sobre los ingresos del período."""
     etiqueta_periodo = ETIQUETAS_PERIODO.get(periodo, "en el período")
 
     if not gastos:
         return f"📜 Tus arcas descansan sin gastos {etiqueta_periodo}. 🎊"
 
-    total = sum(float(g["monto"]) for g in gastos)
-    if total == 0:
-        return f"📜 Tus arcas descansan sin gastos {etiqueta_periodo}. 🎊"
-
-    if categoria:
-        monto_categoria = sum(float(g["monto"]) for g in gastos if g.get("categoria") == categoria)
-        porcentaje = (monto_categoria / total) * 100
-        return (
-            f"📜 {categoria} representa el {porcentaje:.1f}% de tus gastos {etiqueta_periodo}\n"
-            f"({formatear_monto(monto_categoria)} de {formatear_monto(total)} en total)"
-        )
+    # Sin ingresos no hay base para el % sobre botín: se usa el reparto sobre gastos
+    if total_ingresos <= 0:
+        return generar_texto_porcentaje(periodo, gastos)
 
     por_categoria = {}
     for g in gastos:
         cat = g.get("categoria", "Miscelánea")
         por_categoria[cat] = por_categoria.get(cat, 0.0) + float(g["monto"])
 
-    lineas = [f"📜 Reparto del tesoro {etiqueta_periodo}", "", f"🪎 Total: {formatear_monto(total)}", ""]
+    total_gastos = sum(por_categoria.values())
+    restante = total_ingresos - total_gastos
+    pct_gastos = (total_gastos / total_ingresos) * 100
+    pct_restante = (restante / total_ingresos) * 100
+
+    lineas = [
+        f"📜 Reparto del tesoro {etiqueta_periodo}",
+        "",
+        f"🪽 Desembolso total: {pct_gastos:.1f}% ({formatear_monto(total_gastos)})",
+        "",
+    ]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
-        porcentaje = (monto / total) * 100
+        porcentaje = (monto / total_ingresos) * 100
         emoji_cat = CATEGORIA_EMOJIS.get(cat, "❓")
-        lineas.append(f"  {emoji_cat} {cat}: {porcentaje:.1f}% ({formatear_monto(monto)})")
+        lineas.append(f"{emoji_cat} {cat}:")
+        lineas.append(f"• {porcentaje:.1f}% ({formatear_monto(monto)})")
+
+    lineas.append("")
+    lineas.append(f"🪎 Botín restante: {pct_restante:.1f}% ({formatear_monto(restante)})")
 
     return "\n".join(lineas)
 
@@ -1660,26 +1667,24 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                         informe = generar_texto_informe(etiqueta, gastos, ingresos)
                         print(f"📜 Informe general '{etiqueta}' generado para {numero_remitente} ({len(gastos)} gastos, {len(ingresos)} ingresos)")
                         await enviar_mensaje_whatsapp(numero_remitente, informe)
-                else:
-                    categoria = detectar_categoria_informe(texto)
-                    gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
-                    ingresos = [] if categoria else await obtener_ingresos(numero_remitente, desde, hasta)
-                    informe = generar_texto_informe(etiqueta, gastos, ingresos, categoria)
-                    print(f"📜 Informe '{etiqueta}'{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
-                    await enviar_mensaje_whatsapp(numero_remitente, informe)
             elif detectar_solicitud_porcentaje(texto):
                 # El usuario pidió un porcentaje (ej. "qué % de mis gastos/ingresos es ocio")
                 categoria = detectar_categoria_informe(texto)
                 periodo_pct = detectar_periodo_generico(texto, default="mensual")
                 desde, hasta = calcular_rango_fechas(periodo_pct)
                 gastos = await obtener_gastos(numero_remitente, desde, hasta)  # sin filtro: necesitamos el total
+                ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
+                total_ingresos = sum(float(i["monto"]) for i in ingresos)
 
-                if detectar_referencia_ingresos(texto):
-                    ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
-                    total_ingresos = sum(float(i["monto"]) for i in ingresos)
-                    mensaje_pct = generar_texto_porcentaje_ingresos(periodo_pct, gastos, total_ingresos, categoria)
+                if categoria:
+                    # Pregunta por una categoría concreta: se mantiene el mensaje corto de siempre
+                    if detectar_referencia_ingresos(texto):
+                        mensaje_pct = generar_texto_porcentaje_ingresos(periodo_pct, gastos, total_ingresos, categoria)
+                    else:
+                        mensaje_pct = generar_texto_porcentaje(periodo_pct, gastos, categoria)
                 else:
-                    mensaje_pct = generar_texto_porcentaje(periodo_pct, gastos, categoria)
+                    # Reparto general: formato nuevo
+                    mensaje_pct = generar_texto_reparto(periodo_pct, gastos, total_ingresos)
 
                 print(f"📜 Porcentaje {periodo_pct}{' / ' + categoria if categoria else ''} generado para {numero_remitente}")
                 await enviar_mensaje_whatsapp(numero_remitente, mensaje_pct)
