@@ -618,7 +618,7 @@ async def guardar_ingreso(numero: str, datos: dict):
     filas = respuesta.json()
     return filas[0] if filas else None
 
-async def obtener_ingresos(numero: str, desde: datetime, hasta: datetime):
+async def obtener_ingresos(numero: str, desde: datetime, hasta: datetime, categoria: str = None):
     url = f"{SUPABASE_URL}/rest/v1/ingresos"
     headers = {
         "apikey": SUPABASE_KEY,
@@ -630,6 +630,8 @@ async def obtener_ingresos(numero: str, desde: datetime, hasta: datetime):
         "select": "monto,categoria,descripcion,fecha",
         "order": "fecha.asc",
     }
+    if categoria:
+        params["categoria"] = f"eq.{categoria}"
     respuesta = await request_con_reintentos("GET", url, headers, params=params)
     if respuesta is None or respuesta.status_code != 200:
         codigo = respuesta.status_code if respuesta else "sin respuesta"
@@ -688,7 +690,14 @@ def normalizar(texto: str) -> str:
     texto = "".join(c for c in unicodedata.normalize("NFD", texto) if unicodedata.category(c) != "Mn")
     return texto
 
-PALABRAS_INFORME = ["resumen", "informe", "reporte", "detalle", "detallame", "detalla", "muestrame", "cuanto gaste", "cuanto he gastado"]
+PALABRAS_INFORME = [
+    "resumen", "informe", "reporte", "detalle", "detallame", "detalla", "muestrame",
+    "cuanto gaste", "cuanto he gastado",
+    # frases tipo pregunta ("¿cuáles han sido mis gastos en X este mes?")
+    "cuales han sido", "cuales fueron", "cual ha sido", "cuales son",
+    "que gaste", "que he gastado", "cuanto llevo gastado", "cuanto llevo gastando",
+    "listame", "ensename", "dame el detalle", "dime mis gastos", "dime cuanto",
+]
 PERIODOS = {
     "diario": ["diario", "diarios", "de hoy", "hoy"],
     "semanal": ["semanal", "semanales", "semana"],
@@ -769,11 +778,34 @@ def detectar_solicitud_eliminar(texto: str) -> bool:
     return any(re.search(rf"\b{re.escape(p)}\b", texto_norm) for p in PALABRAS_ELIMINAR)
 
 def detectar_categoria_informe(texto: str):
+    """Detecta a qué categoría de GASTO se refiere el mensaje, ya sea porque el usuario
+    escribió el nombre exacto de la categoría (ej. "ofrendas", "taberna") o un alias
+    conocido (ej. "super", "ocio", "regalo")."""
     texto_norm = normalizar(texto)
-    # Alias más largos primero, para que "vivienda" no se coma casos más específicos, etc.
+
+    # 1) Coincidencia directa con el nombre real de la categoría.
+    #    Se ordenan por longitud descendente para que, p.ej., "movilidad y monturas" no
+    #    quede eclipsada por una coincidencia parcial más corta.
+    for cat in sorted(CATEGORIAS, key=len, reverse=True):
+        cat_norm = normalizar(cat)
+        if re.search(rf"\b{re.escape(cat_norm)}\b", texto_norm):
+            return cat
+
+    # 2) Alias más largos primero, para que "vivienda" no se coma casos más específicos, etc.
     for alias in sorted(ALIASES_CATEGORIA.keys(), key=len, reverse=True):
         if re.search(rf"\b{re.escape(alias)}\b", texto_norm):
             return ALIASES_CATEGORIA[alias]
+
+    return None
+
+def detectar_categoria_ingreso_informe(texto: str):
+    """Igual que detectar_categoria_informe pero para categorías de INGRESO (ej. "cuánto he
+    recibido de Contratos de mercenario este mes")."""
+    texto_norm = normalizar(texto)
+    for cat in sorted(CATEGORIAS_INGRESO, key=len, reverse=True):
+        cat_norm = normalizar(cat)
+        if re.search(rf"\b{re.escape(cat_norm)}\b", texto_norm):
+            return cat
     return None
 
 def calcular_rango_fechas(periodo: str):
@@ -940,6 +972,19 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
     else:
         lineas.append(f"🧮 Tesoro restante: {signo}{formatear_monto_corto(abs(balance))}")
 
+    return "\n".join(lineas)
+
+def generar_texto_informe_ingresos(etiqueta: str, ingresos: list, categoria: str) -> str:
+    """Análogo a generar_texto_informe pero para un informe de INGRESOS filtrado por una
+    categoría de ingreso concreta (ej. "cuánto he recibido de Contratos de mercenario")."""
+    emoji_cat = INGRESO_EMOJIS.get(categoria, "❓")
+    titulo = f"📜 Crónica de {etiqueta} — {emoji_cat} {categoria}"
+    if not ingresos:
+        return f"{titulo}\n\nNo se han registrado botines de esta categoría durante este período. 🎊"
+    total = sum(float(i["monto"]) for i in ingresos)
+    lineas = [titulo, "", f"🪎 Botín total: {formatear_monto(total)}", ""]
+    for i in sorted(ingresos, key=lambda x: x.get("fecha", "")):
+        lineas.append(formatear_linea_transaccion(i))
     return "\n".join(lineas)
 
 def generar_texto_porcentaje(periodo: str, gastos: list, categoria: str = None):
@@ -1585,15 +1630,33 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 await manejar_eliminacion(numero_remitente, descripcion_buscada, tipo_sugerido)
             elif periodo:
                 # El usuario pidió un resumen/informe (opcionalmente filtrado por categoría,
-                # y opcionalmente con mes/trimestre específico, ej. "resumen de julio")
-                categoria = detectar_categoria_informe(texto)
+                # y opcionalmente con mes/trimestre específico, ej. "resumen de julio").
+                # Si el mensaje hace referencia a INGRESOS y detectamos una categoría de
+                # ingreso concreta (ej. "cuánto he recibido de Contratos de mercenario este
+                # mes"), generamos un informe de ingresos filtrado; si no, el informe de
+                # gastos de siempre (opcionalmente filtrado por categoría de gasto).
                 desde, hasta, etiqueta = resolver_periodo(texto, periodo)
-                gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
-                ingresos = [] if categoria else await obtener_ingresos(numero_remitente, desde, hasta)
-                informe = generar_texto_informe(etiqueta, gastos, ingresos, categoria)
 
-                print(f"📜 Informe '{etiqueta}'{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
-                await enviar_mensaje_whatsapp(numero_remitente, informe)
+                if detectar_referencia_ingresos(texto):
+                    categoria_ingreso = detectar_categoria_ingreso_informe(texto)
+                    if categoria_ingreso:
+                        ingresos = await obtener_ingresos(numero_remitente, desde, hasta, categoria_ingreso)
+                        informe = generar_texto_informe_ingresos(etiqueta, ingresos, categoria_ingreso)
+                        print(f"📜 Informe de ingresos '{etiqueta}' / {categoria_ingreso} generado para {numero_remitente} ({len(ingresos)} ingresos)")
+                        await enviar_mensaje_whatsapp(numero_remitente, informe)
+                    else:
+                        gastos = await obtener_gastos(numero_remitente, desde, hasta)
+                        ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
+                        informe = generar_texto_informe(etiqueta, gastos, ingresos)
+                        print(f"📜 Informe general '{etiqueta}' generado para {numero_remitente} ({len(gastos)} gastos, {len(ingresos)} ingresos)")
+                        await enviar_mensaje_whatsapp(numero_remitente, informe)
+                else:
+                    categoria = detectar_categoria_informe(texto)
+                    gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
+                    ingresos = [] if categoria else await obtener_ingresos(numero_remitente, desde, hasta)
+                    informe = generar_texto_informe(etiqueta, gastos, ingresos, categoria)
+                    print(f"📜 Informe '{etiqueta}'{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
+                    await enviar_mensaje_whatsapp(numero_remitente, informe)
             elif detectar_solicitud_porcentaje(texto):
                 # El usuario pidió un porcentaje (ej. "qué % de mis gastos/ingresos es ocio")
                 categoria = detectar_categoria_informe(texto)
