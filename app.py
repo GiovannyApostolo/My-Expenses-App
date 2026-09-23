@@ -108,13 +108,6 @@ INGRESO_EMOJIS = {
     "Oro recuperado": "🫱🏼‍🫲🏽",
 }
 
-INGRESO_EMOJIS_NORM = {normalizar(k): v for k, v in INGRESO_EMOJIS.items()}
-
-def emoji_ingreso(categoria: str) -> str:
-    """Busca el emoji de una categoría de ingreso de forma tolerante a tildes/mayúsculas,
-    para no perder el emoji por variaciones en cómo quedó guardado el texto."""
-    return INGRESO_EMOJIS_NORM.get(normalizar(categoria or ""), "❓")
-
 def formatear_fecha_hora_actual():
     ahora = datetime.now(ZONA_HORARIA)
     fecha_str = f"{ahora.day} de {MESES_ES_ABREV[ahora.month]} de {ahora.year}"
