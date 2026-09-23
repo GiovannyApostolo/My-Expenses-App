@@ -1170,7 +1170,7 @@ async def manejar_eliminacion(numero_remitente: str, descripcion_buscada: str, t
             numero_remitente,
             f"🧙🏻‍♂️ Registro eliminado de las arcas\n"
             f"• {emoji_cat} {candidato.get('categoria')}{extra}\n"
-            f"  👉🏻 {candidato.get('descripcion')} ({formatear_monto_corto(candidato.get('monto'))})"
+            f"• 🪶 {candidato.get('descripcion')} ({formatear_monto_corto(candidato.get('monto'))})"
         )
     else:
         await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo eliminar ese registro. Intenta de nuevo en un momento.")
@@ -1288,9 +1288,9 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                                 extra = f"\n\n(Había {len(candidatos) - 1} coincidencia(s) más sin modificar; sé más específico si quieres cambiar otra)" if len(candidatos) > 1 else ""
                                 await enviar_mensaje_whatsapp(
                                     numero_remitente,
-                                    f"📯 Registro reclasificado\n"
-                                    f"• 🪶 {gasto.get('descripcion')} ({formatear_monto_corto(gasto.get('monto'))})\n"
-                                    f"• {emoji_cat} Ahora está en: {categoria_nueva}{extra}"
+                                    f"🧙🏻‍♂️ Registro reclasificado\n"
+                                    f"• {gasto.get('descripcion')} ({formatear_monto_corto(gasto.get('monto'))}) 🪶\n"
+                                    f"• Ahora está en: {categoria_nueva}{extra} {emoji_cat}"
                                 )
                             else:
                                 await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo reclasificar ese gasto. Intenta de nuevo en un momento.")
