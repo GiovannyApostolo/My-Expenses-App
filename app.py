@@ -97,16 +97,23 @@ CATEGORIA_EMOJIS = {
 # coincidan con las claves reales de INGRESO_EMOJIS (en el reskin original esas dos
 # categorías se quedaban sin emoji propio y caían siempre en "🧺"). "Oro recuperado"
 # queda como entrada de reserva sin usar, igual que "Reintegros" en el original.
-CATEGORIAS_INGRESO = ["Botín principal", "Contratos de mercenario", "Recompensas extra", "Ofrenda de aliados", "Objeto encontrado"]
+CATEGORIAS_INGRESO = ["Botín principal", "Botín de mercenario", "Recompensas extra", "Ofrenda de aliados", "Objeto encontrado"]
 CATEGORIAS_INGRESO_TEXTO = ", ".join(CATEGORIAS_INGRESO)
 INGRESO_EMOJIS = {
     "Botín principal": "🪎",
-    "Botín de mercenario": "🗡️",
+    "Contratos de mercenario": "🗡️",
     "Recompensas extra": "✨",
     "Ofrenda de aliados": "💎",
     "Objeto encontrado": "🧺",
     "Oro recuperado": "🫱🏼‍🫲🏽",
 }
+
+INGRESO_EMOJIS_NORM = {normalizar(k): v for k, v in INGRESO_EMOJIS.items()}
+
+def emoji_ingreso(categoria: str) -> str:
+    """Busca el emoji de una categoría de ingreso de forma tolerante a tildes/mayúsculas,
+    para no perder el emoji por variaciones en cómo quedó guardado el texto."""
+    return INGRESO_EMOJIS_NORM.get(normalizar(categoria or ""), "❓")
 
 def formatear_fecha_hora_actual():
     ahora = datetime.now(ZONA_HORARIA)
@@ -270,7 +277,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     Analiza el mensaje del usuario:
     - Si describe un GASTO real (algo que compró, pagó o gastó, con o sin monto explícito),
       responde: {{"intencion": "gasto"}}
-    - Si describe un INGRESO real (dinero que recibió: Botín principal, Contratos de mercenario, regalo, venta, reintegro, etc.),
+    - Si describe un INGRESO real (dinero que recibió: Botín principal, Botín de mercenario, regalo, venta, reintegro, etc.),
       responde: {{"intencion": "ingreso"}}
     - Si pide CAMBIAR/CORREGIR la categoría de un gasto que ya registró antes (identificándolo
       por su descripción o nombre, ej. "pon el gasto de Jennifer González en Refugio y suministros"),
@@ -766,7 +773,7 @@ def detectar_categoria_informe(texto: str):
 
 def detectar_categoria_ingreso_informe(texto: str):
     """Igual que detectar_categoria_informe pero para categorías de INGRESO (ej. "cuánto he
-    recibido de Contratos de mercenario este mes")."""
+    recibido de Botín de mercenario este mes")."""
     texto_norm = normalizar(texto)
     for cat in sorted(CATEGORIAS_INGRESO, key=len, reverse=True):
         cat_norm = normalizar(cat)
@@ -947,7 +954,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
 
 def generar_texto_informe_ingresos(etiqueta: str, ingresos: list, categoria: str) -> str:
     """Análogo a generar_texto_informe pero para un informe de INGRESOS filtrado por una
-    categoría de ingreso concreta (ej. "cuánto he recibido de Contratos de mercenario")."""
+    categoría de ingreso concreta (ej. "cuánto he recibido de Botín de mercenario")."""
     emoji_cat = INGRESO_EMOJIS.get(categoria, "❓")
     titulo = f"📜 Crónica de {etiqueta}\n\n{emoji_cat} {categoria}"
     if not ingresos:
