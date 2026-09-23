@@ -50,20 +50,22 @@ async def _registrar_id_en_supabase(message_id: str) -> bool:
     return len(filas) == 0  # vacío = el id ya existía y "ignore-duplicates" lo descartó
 
 async def ya_procesado(message_id: str) -> bool:
-    """Deduplica mensajes entrantes. Primero comprueba en memoria (cubre el caso común de
-    reintentos inmediatos de Meta sin llamar a Supabase). Si no estaba en memoria, además
-    intenta registrar el id en la tabla 'mensajes_procesados' de Supabase para sobrevivir a
-    reinicios del proceso (Render puede reiniciar/redeployar el contenedor); si esa llamada
-    falla por cualquier motivo (tabla inexistente, Supabase caído, timeout), se ignora
-    silenciosamente y el flujo sigue exactamente como con solo la deduplicación en memoria."""
-    if ya_procesado_en_memoria(message_id):
-        return True
+    """Deduplicación rápida SOLO en memoria. Cubre el caso común de reintentos inmediatos de
+    Meta sin añadir ninguna llamada de red a la ruta crítica de respuesta al webhook."""
+    return ya_procesado_en_memoria(message_id)
+
+async def procesar_mensaje_entrante_con_dedup(message: dict, numero_remitente: str, message_id: str):
+    """Envoltorio que corre en segundo plano (background task): antes de procesar el mensaje,
+    comprueba y registra el id en la tabla 'mensajes_procesados' de Supabase, como respaldo
+    persistente por si el proceso se reinició y perdió la deduplicación en memoria. Esto se
+    hace aquí -y no en receive_message- para no retrasar la respuesta a Meta ni un instante."""
     try:
         if await _registrar_id_en_supabase(message_id):
-            return True
+            print(f"🔁 Mensaje duplicado ignorado (Supabase): {message_id}")
+            return
     except Exception as e:
         print(f"⚠️ No se pudo verificar deduplicación en Supabase (se ignora): {type(e).__name__}: {e}")
-    return False
+    await procesar_mensaje_entrante(message, numero_remitente)
 
 # --- 1. CONFIGURACIÓN Y VARIABLES DE ENTORNO (De Render) ---
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
@@ -1826,11 +1828,14 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
                 numero_remitente = message["from"]
                 message_id = message.get("id", "")
 
-                if await ya_procesado(message_id):
-                    print(f"🔁 Mensaje duplicado ignorado: {message_id}")
+                if ya_procesado_en_memoria(message_id):
+                    print(f"🔁 Mensaje duplicado ignorado (memoria): {message_id}")
                 else:
-                    # Se procesa en segundo plano; respondemos a Meta de inmediato.
-                    background_tasks.add_task(procesar_mensaje_entrante, message, numero_remitente)
+                    # Se procesa en segundo plano; respondemos a Meta de inmediato,
+                    # sin esperar ninguna llamada de red.
+                    background_tasks.add_task(
+                        procesar_mensaje_entrante_con_dedup, message, numero_remitente, message_id
+                    )
 
         except (KeyError, IndexError) as e:
             print(f"⚠️ Error parseando webhook: {e}")
