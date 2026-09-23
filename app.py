@@ -1027,7 +1027,7 @@ def generar_texto_reparto(periodo: str, gastos: list, total_ingresos: float) -> 
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total_ingresos) * 100
         emoji_cat = CATEGORIA_EMOJIS.get(cat, "❓")
-        lineas.append(f"{emoji_cat} {cat}: {porcentaje:.1f}%")
+        lineas.append(f"• {emoji_cat} {cat}: {porcentaje:.1f}%")
 
     lineas.append("")
     lineas.append(f"🪎 Botín restante: {pct_restante:.1f}%")
