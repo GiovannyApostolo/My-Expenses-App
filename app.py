@@ -196,16 +196,42 @@ async def procesar_ingreso_con_ia(texto_usuario: str):
     contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
     return await generar_con_reintentos(contenido)
 
+async def procesar_eliminacion_con_ia(texto_usuario: str) -> dict:
+    """Se usa cuando detectamos que el usuario quiere eliminar/borrar/cancelar una transacción
+    ya registrada. Extrae la descripción que identifica el movimiento (comercio, persona,
+    concepto) y, si es posible, si se trata de un gasto o de un ingreso."""
+    prompt_sistema = f"""
+    Eres un asistente financiero. El usuario quiere ELIMINAR/BORRAR/CANCELAR/ANULAR un gasto
+    o un ingreso que ya registró antes, identificándolo por su descripción, comercio, persona
+    o concepto (ej. "elimina el gasto de Mercadona", "borra el ingreso de la nómina",
+    "cancela lo de Netflix").
+
+    Devuelve un JSON con esta estructura exacta:
+    {{"descripcion_buscada": "texto que identifica la transacción", "tipo": "gasto" o "ingreso" o "desconocido"}}
+
+    Reglas:
+    - Si el usuario NO da una descripción concreta y solo dice algo como "el último gasto",
+      "el último movimiento" o "lo último que puse", deja "descripcion_buscada" como "".
+    - Usa "tipo": "gasto" si queda claro que es un gasto, "ingreso" si queda claro que es un
+      ingreso/botín, o "desconocido" si no se puede saber con certeza.
+    """
+    contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
+    resultado = await generar_con_reintentos(contenido)
+    if not isinstance(resultado, dict):
+        return {"descripcion_buscada": "", "tipo": "desconocido"}
+    return resultado
+
 async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
-    """Se usa solo cuando ninguna palabra clave (informe/porcentaje/balance/exportar/ingreso)
-    coincidió con el mensaje. Decide si realmente es un gasto, un ingreso, una corrección de
-    categoría, o algo fuera del alcance del bot, en vez de asumir por defecto que es un gasto."""
+    """Se usa solo cuando ninguna palabra clave (informe/porcentaje/balance/exportar/ingreso/
+    eliminar) coincidió con el mensaje. Decide si realmente es un gasto, un ingreso, una
+    corrección de categoría, una eliminación, o algo fuera del alcance del bot, en vez de
+    asumir por defecto que es un gasto."""
     prompt_sistema = f"""
     Eres el clasificador de intención de un bot de finanzas personales por WhatsApp. El bot
     SOLO puede: registrar gastos, registrar ingresos, corregir la categoría de un gasto ya
-    registrado, generar resúmenes/informes, calcular porcentajes y balance, y exportar datos
-    a Excel. No hace nada más (no agenda, no da consejos generales, no chatea de temas ajenos
-    a las finanzas personales del usuario).
+    registrado, ELIMINAR un gasto o ingreso ya registrado, generar resúmenes/informes,
+    calcular porcentajes y balance, y exportar datos a Excel. No hace nada más (no agenda,
+    no da consejos generales, no chatea de temas ajenos a las finanzas personales del usuario).
 
     Analiza el mensaje del usuario:
     - Si describe un GASTO real (algo que compró, pagó o gastó, con o sin monto explícito),
@@ -216,12 +242,16 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
       por su descripción o nombre, ej. "pon el gasto de Jennifer González en Refugio y suministros"),
       responde: {{"intencion": "corregir_categoria", "descripcion_buscada": "el texto que
       identifica el gasto original", "categoria_nueva": "una de [{CATEGORIAS_TEXTO}]"}}
+    - Si pide ELIMINAR/BORRAR/CANCELAR/ANULAR un gasto o ingreso ya registrado (identificándolo
+      por su descripción, o "el último gasto/ingreso" si no da descripción concreta), responde:
+      {{"intencion": "eliminar_transaccion", "descripcion_buscada": "el texto que identifica
+      la transacción (o '' si dijo 'el último')", "tipo": "gasto" o "ingreso" o "desconocido"}}
     - Si es cualquier otra cosa (saludo, pregunta general, petición fuera del alcance del bot,
       o un mensaje ambiguo sin relación clara a lo anterior), responde:
       {{"intencion": "no_soportado", "respuesta": "..."}} donde "respuesta" es 🧌 seguido de un mensaje breve,
       amable, en español y con un todo de RPG de fantasia medieval, explicando que no puedes ayudar con eso, y recordando brevemente
       qué sí puedes hacer (registrar gastos e ingresos por texto o foto, corregir categorías,
-      generar resúmenes, calcular porcentajes/balance, y exportar a Excel).
+      eliminar registros, generar resúmenes, calcular porcentajes/balance, y exportar a Excel).
 
     Devuelve SOLO el JSON correspondiente.
     """
@@ -310,6 +340,26 @@ async def buscar_gastos_por_descripcion(numero: str, descripcion_buscada: str, l
         return []
     return respuesta.json()
 
+async def buscar_ingresos_por_descripcion(numero: str, descripcion_buscada: str, limite: int = 5):
+    url = f"{SUPABASE_URL}/rest/v1/ingresos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+    }
+    params = {
+        "numero": f"eq.{numero}",
+        "descripcion": f"ilike.*{descripcion_buscada}*",
+        "select": "id,monto,categoria,descripcion,fecha",
+        "order": "fecha.desc",
+        "limit": str(limite),
+    }
+    respuesta = await request_con_reintentos("GET", url, headers, params=params)
+    if respuesta is None or respuesta.status_code != 200:
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        print(f"⚠️ Error buscando ingreso en Supabase: {codigo}")
+        return []
+    return respuesta.json()
+
 async def actualizar_categoria_gasto(gasto_id: str, categoria_nueva: str) -> bool:
     url = f"{SUPABASE_URL}/rest/v1/gastos"
     headers = {
@@ -327,7 +377,7 @@ async def actualizar_categoria_gasto(gasto_id: str, categoria_nueva: str) -> boo
         return False
     return True
 
-async def eliminar_gasto_en_supabase(gasto_id: str) -> bool:
+async def eliminar_gasto(gasto_id: str) -> bool:
     url = f"{SUPABASE_URL}/rest/v1/gastos"
     headers = {
         "apikey": SUPABASE_KEY,
@@ -339,6 +389,21 @@ async def eliminar_gasto_en_supabase(gasto_id: str) -> bool:
     if respuesta is None or respuesta.status_code not in (200, 204):
         codigo = respuesta.status_code if respuesta else "sin respuesta"
         print(f"⚠️ Error eliminando gasto en Supabase: {codigo}")
+        return False
+    return True
+
+async def eliminar_ingreso(ingreso_id: str) -> bool:
+    url = f"{SUPABASE_URL}/rest/v1/ingresos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Prefer": "return=minimal",
+    }
+    params = {"id": f"eq.{ingreso_id}"}
+    respuesta = await request_con_reintentos("DELETE", url, headers, params=params)
+    if respuesta is None or respuesta.status_code not in (200, 204):
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        print(f"⚠️ Error eliminando ingreso en Supabase: {codigo}")
         return False
     return True
 
@@ -485,6 +550,16 @@ PALABRAS_INGRESO = ["ingreso", "ingresos", "ingrese", "cobre", "recibi"]
 def detectar_solicitud_ingreso(texto: str) -> bool:
     texto_norm = normalizar(texto)
     return any(re.search(rf"\b{p}\b", texto_norm) for p in PALABRAS_INGRESO)
+
+# --- Eliminación de transacciones ---
+PALABRAS_ELIMINAR = [
+    "elimina", "eliminar", "elimina el", "borra", "borrar", "cancela", "cancelar",
+    "anula", "anular", "quita", "quitar", "deshaz", "deshacer",
+]
+
+def detectar_solicitud_eliminar(texto: str) -> bool:
+    texto_norm = normalizar(texto)
+    return any(re.search(rf"\b{re.escape(p)}\b", texto_norm) for p in PALABRAS_ELIMINAR)
 
 def detectar_categoria_informe(texto: str):
     texto_norm = normalizar(texto)
@@ -1043,6 +1118,63 @@ def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
 
     return "\n".join(lineas).rstrip()
 
+# --- 5. ELIMINACIÓN DE TRANSACCIONES ---
+async def manejar_eliminacion(numero_remitente: str, descripcion_buscada: str, tipo_sugerido: str = "desconocido"):
+    """Busca el gasto/ingreso más reciente que coincida con la descripción (o el más reciente
+    de todos si la descripción viene vacía, ej. "elimina el último gasto") y lo borra. Si
+    'tipo_sugerido' es "gasto" o "ingreso" restringe la búsqueda a esa tabla; si es
+    "desconocido" busca en ambas y se queda con la coincidencia más reciente de las dos."""
+    candidatos_gasto = []
+    candidatos_ingreso = []
+    if tipo_sugerido != "ingreso":
+        candidatos_gasto = await buscar_gastos_por_descripcion(numero_remitente, descripcion_buscada)
+    if tipo_sugerido != "gasto":
+        candidatos_ingreso = await buscar_ingresos_por_descripcion(numero_remitente, descripcion_buscada)
+
+    candidato = None
+    es_ingreso = False
+    if candidatos_gasto and candidatos_ingreso:
+        if candidatos_gasto[0]["fecha"] >= candidatos_ingreso[0]["fecha"]:
+            candidato = candidatos_gasto[0]
+        else:
+            candidato = candidatos_ingreso[0]
+            es_ingreso = True
+    elif candidatos_gasto:
+        candidato = candidatos_gasto[0]
+    elif candidatos_ingreso:
+        candidato = candidatos_ingreso[0]
+        es_ingreso = True
+
+    if not candidato:
+        texto_busq = f' que coincida con "{descripcion_buscada}"' if descripcion_buscada else ""
+        await enviar_mensaje_whatsapp(numero_remitente, f"🧌 No hallé ningún registro en los libros{texto_busq}.")
+        return
+
+    if es_ingreso:
+        ok = await eliminar_ingreso(candidato["id"])
+        emoji_cat = INGRESO_EMOJIS.get(candidato.get("categoria"), "❓")
+    else:
+        ok = await eliminar_gasto(candidato["id"])
+        emoji_cat = CATEGORIA_EMOJIS.get(candidato.get("categoria"), "❓")
+
+    total_candidatos = len(candidatos_gasto) + len(candidatos_ingreso)
+    tipo_log = "ingreso" if es_ingreso else "gasto"
+    print(f"🗑️ Eliminación de {tipo_log}: '{candidato.get('descripcion')}' ({numero_remitente})")
+
+    if ok:
+        extra = (
+            f"\n\n(Había {total_candidatos - 1} coincidencia(s) más sin eliminar; "
+            "sé más específico si quieres borrar otra)"
+        ) if total_candidatos > 1 else ""
+        await enviar_mensaje_whatsapp(
+            numero_remitente,
+            f"🗑️ Registro eliminado de las arcas\n"
+            f"• 🪶 {candidato.get('descripcion')} ({formatear_monto_corto(candidato.get('monto'))})\n"
+            f"• {emoji_cat} {candidato.get('categoria')}{extra}"
+        )
+    else:
+        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo eliminar ese registro. Intenta de nuevo en un momento.")
+
 # --- 6. RUTAS DEL WEBHOOK ---
 async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
     try:
@@ -1070,6 +1202,15 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                         await enviar_documento_whatsapp(numero_remitente, media_id, nombre_archivo, caption)
                     else:
                         await enviar_mensaje_whatsapp(numero_remitente, "🧌 El escriba no ha podido preparar el pergamino. Inténtalo de nuevo en unos instantes.")
+            elif detectar_solicitud_eliminar(texto):
+                # El usuario pidió eliminar/borrar/cancelar un gasto o ingreso ya registrado.
+                # OJO: esta comprobación va ANTES que la de "ingreso", porque un mensaje como
+                # "elimina el ingreso de la nómina" contiene la palabra "ingreso" y si no,
+                # caería por error en la rama de registrar un ingreso nuevo.
+                datos_eliminar = await procesar_eliminacion_con_ia(texto)
+                descripcion_buscada = datos_eliminar.get("descripcion_buscada", "") or ""
+                tipo_sugerido = datos_eliminar.get("tipo", "desconocido")
+                await manejar_eliminacion(numero_remitente, descripcion_buscada, tipo_sugerido)
             elif periodo:
                 # El usuario pidió un resumen/informe (opcionalmente filtrado por categoría,
                 # y opcionalmente con mes/trimestre específico, ej. "resumen de julio")
@@ -1154,11 +1295,16 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                             else:
                                 await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo reclasificar ese gasto. Intenta de nuevo en un momento.")
 
+                elif intencion == "eliminar_transaccion":
+                    descripcion_buscada = clasificacion.get("descripcion_buscada", "") or ""
+                    tipo_sugerido = clasificacion.get("tipo", "desconocido")
+                    await manejar_eliminacion(numero_remitente, descripcion_buscada, tipo_sugerido)
+
                 elif intencion == "no_soportado":
                     respuesta = clasificacion.get("respuesta") or (
                         "🧌 No puedo ayudarte con eso. Puedo registrar tus gastos e ingresos "
                         "(por texto o foto), generar resúmenes, calcular porcentajes/balance, "
-                        "y exportar tus datos a Excel."
+                        "corregir categorías, eliminar registros, y exportar tus datos a Excel."
                     )
                     print(f"🧌 Mensaje no soportado de {numero_remitente}: {texto!r}")
                     await enviar_mensaje_whatsapp(numero_remitente, respuesta)
