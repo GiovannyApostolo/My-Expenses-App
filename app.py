@@ -1522,7 +1522,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     media_id = await subir_documento_whatsapp(contenido_excel, nombre_archivo)
                     if media_id:
                         caption = f"🧧 Libro de cuentas\n"
-                        f"• {etiqueta_caption}"
+                        "• {etiqueta_caption}"
                         await enviar_documento_whatsapp(numero_remitente, media_id, nombre_archivo, caption)
                     else:
                         await enviar_mensaje_whatsapp(numero_remitente, "🧌 El escriba no ha podido preparar el pergamino. Inténtalo de nuevo en unos instantes.")
