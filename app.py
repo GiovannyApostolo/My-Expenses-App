@@ -1636,7 +1636,16 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     categoria = detectar_categoria_informe(texto)
                     gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
                     ingresos = [] if categoria else await obtener_ingresos(numero_remitente, desde, hasta)
-                    informe = generar_texto_informe(etiqueta, gastos, ingresos, categoria)
+
+                    porcentaje = None
+                    if categoria:
+                        ingresos_periodo = await obtener_ingresos(numero_remitente, desde, hasta)
+                        total_ingresos_periodo = sum(float(i["monto"]) for i in ingresos_periodo)
+                        total_categoria = sum(float(g["monto"]) for g in gastos)
+                        if total_ingresos_periodo > 0:
+                            porcentaje = (total_categoria / total_ingresos_periodo) * 100
+
+                    informe = generar_texto_informe(etiqueta, gastos, ingresos, categoria, porcentaje)
                     print(f"📜 Informe '{etiqueta}'{' / ' + categoria if categoria else ''} generado para {numero_remitente} ({len(gastos)} gastos)")
                     await enviar_mensaje_whatsapp(numero_remitente, informe)
             elif detectar_solicitud_porcentaje(texto):
