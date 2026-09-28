@@ -1,4 +1,5 @@
 import os
+import hmac
 import json
 import io
 import re
@@ -1867,4 +1868,67 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
         except (KeyError, IndexError) as e:
             print(f"⚠️ Error parseando webhook: {e}")
 
+    return {"status": "ok"}
+
+# --- 7. REGISTRO AUTOMÁTICO DE PAGOS CON APPLE PAY (Atajos de iOS) ---
+# Un atajo de iOS (automatización "Wallet"/"Transacción") hace un POST a /wallet cada vez que
+# pagas con Apple Pay. Variables de entorno necesarias en Render:
+#   WALLET_SECRET      -> clave secreta compartida con el atajo (cabecera X-Wallet-Token)
+#   MI_NUMERO_WHATSAPP -> tu número en formato internacional sin '+' (ej. 34612345678),
+#                         igual que aparece en message["from"]
+WALLET_SECRET = os.getenv("WALLET_SECRET")
+MI_NUMERO_WHATSAPP = os.getenv("MI_NUMERO_WHATSAPP")
+ULTIMOS_PAGOS_WALLET = {}
+
+def parsear_monto_wallet(valor) -> float:
+    """El atajo envía el importe como texto (ej. '12,50 €', '€12.50', '1.234,56 €')."""
+    texto = re.sub(r"[^\d,.]", "", str(valor))
+    if "," in texto and "." in texto:
+        if texto.rfind(",") > texto.rfind("."):
+            texto = texto.replace(".", "").replace(",", ".")
+        else:
+            texto = texto.replace(",", "")
+    elif "," in texto:
+        texto = texto.replace(",", ".")
+    return abs(float(texto))
+
+async def procesar_pago_wallet(numero: str, monto: float, comercio: str):
+    try:
+        # Antiduplicados: el disparador de Atajos a veces se ejecuta dos veces por el mismo pago
+        clave = (round(monto, 2), normalizar(comercio))
+        ahora = datetime.now(ZONA_HORARIA)
+        ultimo = ULTIMOS_PAGOS_WALLET.get(clave)
+        if ultimo and (ahora - ultimo).total_seconds() < 60:
+            print(f"🔁 Pago Wallet duplicado ignorado: {comercio} {monto}")
+            return
+        ULTIMOS_PAGOS_WALLET[clave] = ahora
+
+        # La IA solo sugiere la categoría; el importe y el comercio son los reales de Wallet
+        sugerido = await procesar_gasto_con_ia(f"{comercio}: {monto:.2f} euros")
+        categoria = sugerido.get("categoria") if isinstance(sugerido, dict) else None
+        if categoria not in CATEGORIAS:
+            categoria = "Miscelánea"
+
+        datos = {"monto": monto, "categoria": categoria, "descripcion": comercio}
+        print(f"💳 Pago Apple Pay registrado: {datos}")
+        await registrar_gasto_y_confirmar(numero, datos)
+    except Exception as e:
+        print(f"⚠️ Error procesando pago de Wallet: {type(e).__name__}: {e}")
+
+@app.post("/wallet")
+async def recibir_pago_wallet(request: Request, background_tasks: BackgroundTasks):
+    token = request.headers.get("x-wallet-token", "")
+    if not WALLET_SECRET or not hmac.compare_digest(token, WALLET_SECRET):
+        raise HTTPException(status_code=403, detail="Token inválido")
+    if not MI_NUMERO_WHATSAPP:
+        raise HTTPException(status_code=500, detail="Falta MI_NUMERO_WHATSAPP")
+    try:
+        body = await request.json()
+        monto = parsear_monto_wallet(body.get("monto"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Cuerpo o importe no válido")
+
+    comercio = str(body.get("comercio") or "").strip() or "Pago con Apple Pay"
+    # Se procesa en segundo plano para que el atajo reciba respuesta al instante
+    background_tasks.add_task(procesar_pago_wallet, MI_NUMERO_WHATSAPP, monto, comercio)
     return {"status": "ok"}
