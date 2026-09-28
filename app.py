@@ -89,7 +89,7 @@ CATEGORIA_EMOJIS = {
     "Sabiduría": "📖",
     "Tributos": "🪙",
     "Fugas de oro": "🥷🏻",
-    "Vicios": "🍂",
+    "Vicios": "🚬",
     "Miscelánea": "🧺",
 }
 
@@ -904,7 +904,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
         for g in sorted(gastos, key=lambda x: x.get("fecha", "")):
             lineas.append(formatear_linea_transaccion(g))
         lineas.append("")
-        lineas.append(f"🪽 Desembolso total: {formatear_monto(total)}")
+        lineas.append(f"🍂 Desembolso total: {formatear_monto(total)}")
         return "\n".join(lineas)
 
     # --- Informe general: gastos por categoría + ingresos por categoría + balance ---
@@ -912,7 +912,7 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
     total_gastos = sum(float(g["monto"]) for g in gastos)
     total_ingresos = sum(float(i["monto"]) for i in ingresos)
 
-    lineas = [titulo, "", f"🪽 Desembolso total: {formatear_monto(total_gastos)}"]
+    lineas = [titulo, "", f"🍂 Desembolso total: {formatear_monto(total_gastos)}"]
 
     if gastos:
         por_categoria = {}
@@ -991,7 +991,7 @@ def generar_texto_reparto(periodo: str, gastos: list, total_ingresos: float) -> 
     lineas = [
         f"📜 Reparto del tesoro {etiqueta_periodo}",
         "",
-        f"🪽 Desembolso total: {pct_gastos:.1f}%",
+        f"🍂 Desembolso total: {pct_gastos:.1f}%",
         "",
     ]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
@@ -1045,7 +1045,7 @@ def generar_texto_balance(periodo: str, total_ingresos: float, total_gastos: flo
         f"⚖️ Balance de arcas {etiqueta_periodo}",
         "",
         f"🪎 Botín recaudado: {formatear_monto(total_ingresos)}",
-        f"🪽 Oro gastado: {formatear_monto(total_gastos)}",
+        f"🍂 Oro gastado: {formatear_monto(total_gastos)}",
         f"🧮 Tesoro neto: {formatear_monto(balance)}",
     ]
     if total_ingresos > 0:
@@ -1362,7 +1362,7 @@ def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
 
     if gastos:
         total_gastos = sum(float(g.get("monto", 0)) for g in gastos)
-        lineas.append(f"🪽 Gastos ({formatear_monto_corto(total_gastos)}):")
+        lineas.append(f"🍂 Gastos ({formatear_monto_corto(total_gastos)}):")
         for g in gastos:
             emoji_cat = CATEGORIA_EMOJIS.get(g.get("categoria", "Miscelánea"), "❓")
             lineas.append(f". {emoji_cat} {g.get('descripcion','')} — {g.get('categoria','')} - {formatear_monto_corto(g.get('monto', 0))}")
