@@ -306,6 +306,35 @@ async def descargar_imagen_whatsapp(media_id: str) -> Image.Image:
         respuesta_imagen = await client_http.get(url_descarga, headers=headers)
         return Image.open(io.BytesIO(respuesta_imagen.content))
 
+async def descargar_audio_whatsapp(media_id: str):
+    """Descarga una nota de voz de WhatsApp. Devuelve (bytes, mime_type)."""
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+    async with httpx.AsyncClient(timeout=30.0) as client_http:
+        respuesta_meta = await client_http.get(f"https://graph.facebook.com/v20.0/{media_id}", headers=headers)
+        meta = respuesta_meta.json()
+        url_descarga = meta.get("url")
+        if not url_descarga:
+            raise Exception("Sin URL de descarga del audio")
+        # WhatsApp suele devolver "audio/ogg; codecs=opus"; Gemini espera solo "audio/ogg"
+        mime = (meta.get("mime_type") or "audio/ogg").split(";")[0].strip()
+        respuesta_audio = await client_http.get(url_descarga, headers=headers)
+        return respuesta_audio.content, mime
+
+async def transcribir_audio_con_ia(audio_bytes: bytes, mime_type: str) -> str:
+    """Transcribe una nota de voz a texto usando Gemini. Devuelve '' si no se entiende."""
+    prompt = (
+        "Transcribe fielmente este audio en español. Es un mensaje de voz para un bot de "
+        "finanzas personales (gastos, ingresos, informes, etc.). Conserva las cifras y los "
+        "nombres de comercios tal como se dicen. "
+        'Devuelve SOLO un JSON: {"transcripcion": "texto"}. '
+        'Si no se entiende nada, devuelve {"transcripcion": ""}.'
+    )
+    parte_audio = types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
+    resultado = await generar_con_reintentos([prompt, parte_audio])
+    if not isinstance(resultado, dict):
+        return ""
+    return (resultado.get("transcripcion") or "").strip()
+
 async def procesar_imagen_transacciones_con_ia(imagen: Image.Image):
     prompt_sistema = f"""
     Eres un asistente financiero. La imagen puede ser UN SOLO recibo/ticket de compra,
@@ -1757,6 +1786,23 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     datos = await procesar_gasto_con_ia(texto)
                     print(f"📯 Gasto registrado (Texto): {datos}")
                     await registrar_gasto_y_confirmar(numero_remitente, datos)
+
+        # Procesar notas de voz: se transcriben y se tratan como si fueran un mensaje de texto
+        elif message["type"] == "audio":
+            media_id = message["audio"]["id"]
+            audio_bytes, mime = await descargar_audio_whatsapp(media_id)
+            transcripcion = await transcribir_audio_con_ia(audio_bytes, mime)
+            print(f"🎙️ Audio transcrito de {numero_remitente}: {transcripcion!r}")
+
+            if not transcripcion:
+                await enviar_mensaje_whatsapp(
+                    numero_remitente,
+                    "🧌 El escriba no logró descifrar tu mensaje de voz. ¿Puedes repetirlo o escribirlo?"
+                )
+                return
+
+            mensaje_texto = {"type": "text", "text": {"body": transcripcion}}
+            await procesar_mensaje_entrante(mensaje_texto, numero_remitente)
 
         # Procesar fotos (recibo único o lista de transacciones bancarias)
         elif message["type"] == "image":
