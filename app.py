@@ -45,16 +45,16 @@ MODELO_RESPALDO = "gemini-3.6-flash"
 CATEGORIAS = [
     "Taberna",
     "Provisiones",
-    "Movilidad y monturas",
-    "Servicios activos",
-    "Refugio y suministros",
+    "Monturas",
+    "Pactos",
+    "Refugio",
     "Adquisiciones",
     "Ofrendas",
     "Compañero",
-    "Salud y estamina",
+    "Estamina",
     "Sabiduría",
-    "Tributos y finanzas",
-    "Fugas de Oro",
+    "Tributos",
+    "Fugas de oro",
     "Vicios",
     "Miscelánea",
 ]
@@ -63,10 +63,10 @@ ACLARACION_CATEGORIAS = (
     "Distingue bien entre estas categorías que se prestan a confusión:\n"
     "- 'Taberna': comer/beber fuera de casa (restaurantes, bares, cafeterías, "
     "comida a domicilio) y entretenimiento puntual (cine, conciertos, videojuegos, salidas).\n"
-    "- 'Servicios activos': CUALQUIER pago recurrente/periódico, sea de entretenimiento o no "
+    "- 'Pactos': CUALQUIER pago recurrente/periódico, sea de entretenimiento o no "
     "(Netflix, Spotify, Tidal, iCloud/Apple Cloud, Google Cloud, ChatGPT Plus, Suno, hosting, "
     "dominios, gimnasio con cuota mensual, etc.).\n"
-    "- 'Fugas de Oro': gastos pequeños, impulsivos y cotidianos hechos en la calle o al paso "
+    "- 'Fugas de oro': gastos pequeños, impulsivos y cotidianos hechos en la calle o al paso "
     "(un refresco, un café rápido, chicles, prensa, una chocolatina), distintos de una comida "
     "completa en restaurante (que va en 'Taberna') o de la compra grande de "
     "supermercado.\n"
@@ -77,18 +77,18 @@ ACLARACION_CATEGORIAS = (
 )
 
 CATEGORIA_EMOJIS = {
-    "Taberna": "🎪",
+    "Taberna": "🍺",
     "Provisiones": "🥖",
-    "Movilidad y monturas": "🐫",
-    "Servicios activos": "🔮",
-    "Refugio y suministros": "🏰",
+    "Monturas": "🐫",
+    "Pactos": "🔮",
+    "Refugio": "🏯",
     "Adquisiciones": "🏺",
     "Ofrendas": "💎",
     "Compañero": "🐴",
-    "Salud y estamina": "🍵",
+    "Estamina": "🧪",
     "Sabiduría": "📖",
-    "Tributos y finanzas": "🪙",
-    "Fugas de Oro": "🥷🏻",
+    "Tributos": "🪙",
+    "Fugas de oro": "🥷🏻",
     "Vicios": "🍂",
     "Miscelánea": "🧺",
 }
@@ -273,7 +273,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     - Si describe un INGRESO real (dinero que recibió: Botín principal, Botín de mercenario, regalo, venta, reintegro, etc.),
       responde: {{"intencion": "ingreso"}}
     - Si pide CAMBIAR/CORREGIR la categoría de un gasto que ya registró antes (identificándolo
-      por su descripción o nombre, ej. "pon el gasto de Jennifer González en Refugio y suministros"),
+      por su descripción o nombre, ej. "pon el gasto de Jennifer González en Refugio"),
       responde: {{"intencion": "corregir_categoria", "descripcion_buscada": "el texto que
       identifica el gasto original", "categoria_nueva": "una de [{CATEGORIAS_TEXTO}]"}}
     - Si pide ELIMINAR/BORRAR/CANCELAR/ANULAR un gasto o ingreso ya registrado (identificándolo
@@ -683,16 +683,16 @@ ALIASES_CATEGORIA = {
     "restaurantes": "Taberna", "restaurante": "Taberna",
     "restauracion": "Taberna", "ocio": "Taberna",
     "supermercado": "Provisiones", "super": "Provisiones",
-    "transporte": "Movilidad y monturas", "vehiculo": "Movilidad y monturas", "gasolina": "Movilidad y monturas",
-    "suscripciones": "Servicios activos", "suscripcion": "Servicios activos", "subscripciones": "Servicios activos", "subscripcion": "Servicios activos",
-    "vivienda": "Refugio y suministros", "servicios": "Refugio y suministros", "alquiler": "Refugio y suministros",
-    "suministros": "Refugio y suministros", "vivienda y suministros": "Refugio y suministros",
+    "transporte": "Monturas", "vehiculo": "Monturas", "gasolina": "Monturas",
+    "suscripciones": "Pactos", "suscripcion": "Pactos", "subscripciones": "Pactos", "subscripcion": "Pactos",
+    "vivienda": "Refugio", "servicios": "Refugio", "alquiler": "Refugio",
+    "suministros": "Refugio", "vivienda y suministros": "Refugio",
     "compras": "Adquisiciones",
     "regalos": "Ofrendas", "regalo": "Ofrendas", "cumpleanos": "Ofrendas",
-    "salud": "Salud y estamina", "cuidado personal": "Salud y estamina",
+    "salud": "Estamina", "cuidado personal": "Estamina",
     "educacion": "Sabiduría",
-    "finanzas": "Tributos y finanzas",
-    "hormigas": "Fugas de Oro", "hormiga": "Fugas de Oro",
+    "finanzas": "Tributos",
+    "hormigas": "Fugas de oro", "hormiga": "Fugas de oro",
     "tabaco": "Vicios", "cigarros": "Vicios",
     "otros": "Miscelánea",
 }
@@ -757,7 +757,7 @@ def detectar_categoria_informe(texto: str):
     texto_norm = normalizar(texto)
 
     # 1) Coincidencia directa con el nombre real de la categoría.
-    #    Se ordenan por longitud descendente para que, p.ej., "movilidad y monturas" no
+    #    Se ordenan por longitud descendente para que, p.ej., "Monturas" no
     #    quede eclipsada por una coincidencia parcial más corta.
     for cat in sorted(CATEGORIAS, key=len, reverse=True):
         cat_norm = normalizar(cat)
@@ -1717,7 +1717,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     categoria_nueva = resolver_categoria(clasificacion.get("categoria_nueva", ""), CATEGORIAS)
 
                     if not descripcion_buscada or not categoria_nueva:
-                        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El escriba no ha logrado interpretar tu petición. ¿Puedes reformularlo? (ej. \"pon el gasto de Jennifer en Refugio y suministros\")")
+                        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El escriba no ha logrado interpretar tu petición. ¿Puedes reformularlo? (ej. \"pon el gasto de Jennifer en Refugio\")")
                     else:
                         candidatos = await buscar_gastos_por_descripcion(numero_remitente, descripcion_buscada)
                         if not candidatos:
