@@ -1289,7 +1289,7 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
         celda_pct_balance.number_format = "0.0%"
         celda_pct_balance.font = fuente_subtitulo
 
-        FORMATO_EUR = '#,##0.00\\ "€"'
+    FORMATO_EUR = '#,##0.00\\ "€"'
     for fila_celdas in ws.iter_rows():
         for celda in fila_celdas:
             if isinstance(celda.value, (int, float)) and celda.number_format != "0.0%":
