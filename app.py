@@ -284,7 +284,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     - Si es cualquier otra cosa (saludo, pregunta general, petición fuera del alcance del bot,
       o un mensaje ambiguo sin relación clara a lo anterior), responde:
       {{"intencion": "no_soportado", "respuesta": "..."}} donde "respuesta" es 🧌 seguido de un mensaje breve,
-      amable, en español y con un tono de RPG estilo dark souls, explicando que no puedes ayudar con eso, y recordando brevemente
+      en español y con un tono de RPG estilo dark souls, explicando que no puedes ayudar con eso, y recordando brevemente
       qué sí puedes hacer (registrar gastos e ingresos por texto o foto, corregir categorías,
       eliminar registros, generar resúmenes, calcular porcentajes/balance, y exportar a Excel).
 
