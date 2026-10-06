@@ -284,7 +284,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     - Si es cualquier otra cosa (saludo, pregunta general, petición fuera del alcance del bot,
       o un mensaje ambiguo sin relación clara a lo anterior), responde:
       {{"intencion": "no_soportado", "respuesta": "..."}} donde "respuesta" es 🧌 seguido de un mensaje breve,
-      amable, en español y con un tono de JRPG de fantasia medieval, explicando que no puedes ayudar con eso, y recordando brevemente
+      amable, en español y con un tono de JRPG de fantasia oscura medieval oriental, explicando que no puedes ayudar con eso, y recordando brevemente
       qué sí puedes hacer (registrar gastos e ingresos por texto o foto, corregir categorías,
       eliminar registros, generar resúmenes, calcular porcentajes/balance, y exportar a Excel).
 
@@ -657,6 +657,67 @@ async def obtener_ultimo_botin_principal(numero: str):
     filas = respuesta.json()
     return filas[0] if filas else None
 
+async def obtener_botin_principal_en_rango(numero: str, desde: datetime, hasta: datetime):
+    """El primer registro de ingreso 'Botín principal' dentro de [desde, hasta). Se usa para
+    encontrar el Botín que marcó el inicio del ciclo dentro de un mes concreto (ej. 'exporta
+    septiembre'). None si no hubo ningún Botín principal registrado en ese rango."""
+    url = f"{SUPABASE_URL}/rest/v1/ingresos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+    }
+    params = {
+        "numero": f"eq.{numero}",
+        "categoria": "eq.Botín principal",
+        "fecha": [f"gte.{desde.isoformat()}", f"lt.{hasta.isoformat()}"],
+        "select": "id,fecha",
+        "order": "fecha.asc",
+        "limit": "1",
+    }
+    respuesta = await request_con_reintentos("GET", url, headers, params=params)
+    if respuesta is None or respuesta.status_code != 200:
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        print(f"⚠️ Error consultando Botín principal en rango: {codigo}")
+        return None
+    filas = respuesta.json()
+    return filas[0] if filas else None
+
+async def obtener_siguiente_botin_principal(numero: str, despues_de: datetime):
+    """El próximo registro de ingreso 'Botín principal' posterior a 'despues_de'. Marca dónde
+    termina el ciclo que empezó con un Botín concreto. None si el ciclo sigue abierto (todavía
+    no se ha registrado un Botín principal más reciente)."""
+    url = f"{SUPABASE_URL}/rest/v1/ingresos"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+    }
+    params = {
+        "numero": f"eq.{numero}",
+        "categoria": "eq.Botín principal",
+        "fecha": f"gt.{despues_de.isoformat()}",
+        "select": "id,fecha",
+        "order": "fecha.asc",
+        "limit": "1",
+    }
+    respuesta = await request_con_reintentos("GET", url, headers, params=params)
+    if respuesta is None or respuesta.status_code != 200:
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        print(f"⚠️ Error consultando el siguiente Botín principal: {codigo}")
+        return None
+    filas = respuesta.json()
+    return filas[0] if filas else None
+
+async def calcular_inicio_ciclo_actual(numero: str):
+    """Devuelve (fecha_inicio, es_ciclo). Si el usuario ya registró al menos un 'Botín
+    principal', fecha_inicio es la fecha de ese último Botín (el inicio de su ciclo
+    financiero actual) y es_ciclo=True. Si todavía no ha registrado ninguno, fecha_inicio
+    es el día 1 del mes en curso (comportamiento anterior, por defecto) y es_ciclo=False."""
+    ultimo_botin = await obtener_ultimo_botin_principal(numero)
+    if ultimo_botin:
+        return datetime.fromisoformat(ultimo_botin["fecha"]).astimezone(ZONA_HORARIA), True
+    ahora = datetime.now(ZONA_HORARIA)
+    return ahora.replace(hour=0, minute=0, second=0, microsecond=0, day=1), False
+
 async def guardar_ahorro(numero: str, monto: float, ciclo_desde: datetime, ciclo_hasta: datetime):
     """Guarda el balance de un ciclo cerrado (positivo = se sumó a la fortuna, negativo = se
     restó) en la tabla 'ahorros', separada de gastos/ingresos."""
@@ -811,7 +872,7 @@ def detectar_categoria_ingreso_informe(texto: str):
             return cat
     return None
 
-def calcular_rango_fechas(periodo: str):
+async def calcular_rango_fechas(periodo: str, numero: str = None):
     ahora = datetime.now(ZONA_HORARIA)
     hoy_inicio = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -820,7 +881,10 @@ def calcular_rango_fechas(periodo: str):
     elif periodo == "semanal":
         desde = hoy_inicio - timedelta(days=hoy_inicio.weekday())  # lunes de esta semana
     elif periodo == "mensual":
-        desde = hoy_inicio.replace(day=1)
+        if numero:
+            desde, _ = await calcular_inicio_ciclo_actual(numero)
+        else:
+            desde = hoy_inicio.replace(day=1)
     elif periodo == "trimestral":
         mes_inicio_trimestre = ((ahora.month - 1) // 3) * 3 + 1
         desde = hoy_inicio.replace(month=mes_inicio_trimestre, day=1)
@@ -880,7 +944,7 @@ async def verificar_alerta_ahorro(numero: str, monto_nuevo: float):
     lo recién agregado, para poder reconstruir el % de antes y de después."""
     if not monto_nuevo:
         return None
-    desde, hasta = calcular_rango_fechas("mensual")
+    desde, hasta = await calcular_rango_fechas("mensual", numero)
     gastos_mes = await obtener_gastos(numero, desde, hasta)  # ya incluye lo recién guardado
     ingresos_mes = await obtener_ingresos(numero, desde, hasta)
     total_ingresos = sum(float(i["monto"]) for i in ingresos_mes)
@@ -898,20 +962,30 @@ async def enviar_alerta_ahorro_si_corresponde(numero_remitente: str, monto_nuevo
         titulo, texto = alerta
         await enviar_mensaje_whatsapp(numero_remitente, f"{titulo}\n{texto}")
 
-def resolver_periodo(texto: str, periodo_tipo: str):
+async def resolver_periodo(texto: str, periodo_tipo: str, numero: str = None):
     """Dado un tipo de período ya detectado, calcula el rango de fechas exacto y una
-    etiqueta legible, respetando mes/trimestre específicos si se mencionan (ej. 'julio', 'Q2')."""
+    etiqueta legible, respetando mes/trimestre específicos si se mencionan (ej. 'julio', 'Q2').
+    Para 'mensual' sin mes específico, usa el ciclo actual (desde el último Botín principal)
+    en vez del mes de calendario, si el usuario ya tiene uno registrado."""
     ahora = datetime.now(ZONA_HORARIA)
     if periodo_tipo == "mensual":
-        mes_num = detectar_mes_especifico(texto) or ahora.month
-        desde, hasta = calcular_rango_mes(mes_num)
-        etiqueta = f"{MESES_ES[mes_num]} {desde.year}"
+        mes_num = detectar_mes_especifico(texto)
+        if mes_num:
+            desde, hasta = calcular_rango_mes(mes_num)
+            etiqueta = f"{MESES_ES[mes_num]} {desde.year}"
+        elif numero:
+            desde, es_ciclo = await calcular_inicio_ciclo_actual(numero)
+            hasta = ahora + timedelta(minutes=1)
+            etiqueta = "el ciclo actual" if es_ciclo else f"{MESES_ES[ahora.month]} {ahora.year}"
+        else:
+            desde, hasta = calcular_rango_mes(ahora.month)
+            etiqueta = f"{MESES_ES[ahora.month]} {desde.year}"
     elif periodo_tipo == "trimestral":
         q_num = detectar_trimestre_especifico(texto) or ((ahora.month - 1) // 3) + 1
         desde, hasta = calcular_rango_trimestre(q_num)
         etiqueta = f"trimestre Q{q_num} {desde.year}"
     else:
-        desde, hasta = calcular_rango_fechas(periodo_tipo)
+        desde, hasta = await calcular_rango_fechas(periodo_tipo, numero)
         etiqueta = ETIQUETAS_PERIODO.get(periodo_tipo, periodo_tipo)
     return desde, hasta, etiqueta
 
@@ -1170,8 +1244,13 @@ def calcular_rango_trimestre(trimestre_num: int, anio: int = None):
         hasta = ahora + timedelta(minutes=1)
     return desde, hasta
 
-def preparar_exportacion(texto: str):
-    """Determina el rango de fechas y el nombre base del archivo según lo pedido en el mensaje."""
+async def preparar_exportacion(texto: str, numero: str = None):
+    """Determina el rango de fechas y el nombre base del archivo según lo pedido en el mensaje.
+    Para un mes concreto (ej. 'exporta septiembre'), si hubo un Botín principal registrado
+    dentro de ese mes, el rango exportado es el ciclo real que empezó con ese Botín (hasta el
+    siguiente Botín principal, o hasta ahora si el ciclo sigue abierto) en vez del mes de
+    calendario completo. Si ese mes no tuvo ningún Botín principal, se exporta el mes de
+    calendario tal cual (comportamiento anterior)."""
     ahora = datetime.now(ZONA_HORARIA)
     trimestre_especifico = detectar_trimestre_especifico(texto)
     mes_especifico = detectar_mes_especifico(texto)
@@ -1185,12 +1264,25 @@ def preparar_exportacion(texto: str):
 
     elif mes_especifico is not None or periodo_exp in ("mensual", None):
         mes_num = mes_especifico or ahora.month
-        desde, hasta = calcular_rango_mes(mes_num)
+        desde_mes, hasta_mes = calcular_rango_mes(mes_num)
+
+        botin_del_mes = await obtener_botin_principal_en_rango(numero, desde_mes, hasta_mes) if numero else None
+        if botin_del_mes:
+            desde = datetime.fromisoformat(botin_del_mes["fecha"]).astimezone(ZONA_HORARIA)
+            siguiente_botin = await obtener_siguiente_botin_principal(numero, desde)
+            hasta = (
+                datetime.fromisoformat(siguiente_botin["fecha"]).astimezone(ZONA_HORARIA)
+                if siguiente_botin else ahora + timedelta(minutes=1)
+            )
+            etiqueta_caption = f"{MESES_ES[mes_num].capitalize()} {desde.year} (desde el ultimo botín)"
+        else:
+            desde, hasta = desde_mes, hasta_mes
+            etiqueta_caption = f"{MESES_ES[mes_num].capitalize()} {desde.year}"
+
         nombre_archivo_base = f"gastos_mes_{MESES_ES[mes_num]}_{desde.year}"
-        etiqueta_caption = f"{MESES_ES[mes_num].capitalize()} {desde.year}"
 
     else:
-        desde, hasta = calcular_rango_fechas(periodo_exp)
+        desde, hasta = await calcular_rango_fechas(periodo_exp)
         fecha_archivo = ahora.strftime("%Y%m%d")
         nombre_archivo_base = f"gastos_{periodo_exp}_{fecha_archivo}"
         etiqueta_caption = ETIQUETAS_PERIODO.get(periodo_exp, "")
@@ -1624,7 +1716,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
             if detectar_solicitud_exportar(texto):
                 # El usuario pidió exportar un Excel (ej. "exportar trimestre", "exportar julio", "exportar Q2")
                 categoria = detectar_categoria_informe(texto)
-                desde, hasta, nombre_archivo_base, etiqueta_caption = preparar_exportacion(texto)
+                desde, hasta, nombre_archivo_base, etiqueta_caption = await preparar_exportacion(texto, numero_remitente)
                 gastos = await obtener_gastos(numero_remitente, desde, hasta, categoria)
                 ingresos = [] if categoria else await obtener_ingresos(numero_remitente, desde, hasta)
                 print(f"🧧 Exportación '{nombre_archivo_base}'{' / ' + categoria if categoria else ''} solicitada por {numero_remitente} ({len(gastos)} gastos, {len(ingresos)} ingresos)")
@@ -1652,7 +1744,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
             elif periodo:
                 # El usuario pidió un resumen/informe (opcionalmente filtrado por categoría,
                 # y opcionalmente con mes/trimestre específico, ej. "resumen de julio").
-                desde, hasta, etiqueta = resolver_periodo(texto, periodo)
+                desde, hasta, etiqueta = await resolver_periodo(texto, periodo, numero_remitente)
 
                 if detectar_referencia_ingresos(texto):
                     categoria_ingreso = detectar_categoria_ingreso_informe(texto)
@@ -1692,7 +1784,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
 
                 if categoria:
                     # Categoría concreta: mismo formato que la crónica, con el % junto al nombre
-                    desde, hasta, etiqueta = resolver_periodo(texto, periodo_pct)
+                    desde, hasta, etiqueta = await resolver_periodo(texto, periodo_pct, numero_remitente)
                     todos_gastos = await obtener_gastos(numero_remitente, desde, hasta)
                     gastos_cat = [g for g in todos_gastos if g.get("categoria") == categoria]
                     total_cat = sum(float(g["monto"]) for g in gastos_cat)
@@ -1707,7 +1799,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     mensaje_pct = generar_texto_informe(etiqueta, gastos_cat, [], categoria, porcentaje)
                 else:
                     # Reparto general: formato de "Reparto del tesoro"
-                    desde, hasta = calcular_rango_fechas(periodo_pct)
+                    desde, hasta = await calcular_rango_fechas(periodo_pct, numero_remitente)
                     gastos = await obtener_gastos(numero_remitente, desde, hasta)
                     ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
                     total_ingresos = sum(float(i["monto"]) for i in ingresos)
@@ -1718,7 +1810,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
             elif detectar_solicitud_balance(texto):
                 # El usuario pidió su balance (ingresos - gastos)
                 periodo_bal = detectar_periodo_generico(texto, default="mensual")
-                desde, hasta = calcular_rango_fechas(periodo_bal)
+                desde, hasta = await calcular_rango_fechas(periodo_bal, numero_remitente)
                 gastos = await obtener_gastos(numero_remitente, desde, hasta)
                 ingresos = await obtener_ingresos(numero_remitente, desde, hasta)
                 total_gastos = sum(float(g["monto"]) for g in gastos)
