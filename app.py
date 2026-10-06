@@ -284,7 +284,7 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     - Si es cualquier otra cosa (saludo, pregunta general, petición fuera del alcance del bot,
       o un mensaje ambiguo sin relación clara a lo anterior), responde:
       {{"intencion": "no_soportado", "respuesta": "..."}} donde "respuesta" es 🧌 seguido de un mensaje breve,
-      amable, en español y con un tono de JRPG de fantasia oscura medieval oriental, explicando que no puedes ayudar con eso, y recordando brevemente
+      amable, en español y con un tono de JRPG de fantasia del Japon feudal, explicando que no puedes ayudar con eso, y recordando brevemente
       qué sí puedes hacer (registrar gastos e ingresos por texto o foto, corregir categorías,
       eliminar registros, generar resúmenes, calcular porcentajes/balance, y exportar a Excel).
 
@@ -791,14 +791,14 @@ ALIASES_CATEGORIA = {
 def _coincide_periodo(texto_norm: str, palabras_clave: list) -> bool:
     return any(re.search(rf"\b{re.escape(p)}\b", texto_norm) for p in palabras_clave)
 
-def detectar_periodo_informe(texto: str):
+def detectar_periodo_informe(texto: str, default: str = "mensual"):
     texto_norm = normalizar(texto)
     if not any(p in texto_norm for p in PALABRAS_INFORME):
         return None
     for periodo, palabras_clave in PERIODOS.items():
         if _coincide_periodo(texto_norm, palabras_clave):
             return periodo
-    return None
+    return default
 
 PALABRAS_PORCENTAJE = ["porcentaje", "%", "que parte de mis gastos", "que fraccion", "distribucion", "reparto"]
 
@@ -1274,7 +1274,7 @@ async def preparar_exportacion(texto: str, numero: str = None):
                 datetime.fromisoformat(siguiente_botin["fecha"]).astimezone(ZONA_HORARIA)
                 if siguiente_botin else ahora + timedelta(minutes=1)
             )
-            etiqueta_caption = f"{MESES_ES[mes_num].capitalize()} {desde.year} (desde el ultimo botín)"
+            etiqueta_caption = f"{MESES_ES[mes_num].capitalize()} {desde.year} (ciclo desde el Botín principal)"
         else:
             desde, hasta = desde_mes, hasta_mes
             etiqueta_caption = f"{MESES_ES[mes_num].capitalize()} {desde.year}"
