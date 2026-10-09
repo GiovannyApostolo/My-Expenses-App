@@ -1,5 +1,6 @@
 import os
 import hmac
+from contextvars import ContextVar
 import json
 import io
 import re
@@ -195,23 +196,28 @@ async def generar_con_reintentos(contenido, intentos=3):
     return {"monto": 0.0, "categoria": "Error", "descripcion": "Error procesando"}
 
 async def procesar_gasto_con_ia(texto_usuario: str):
+    tema = tema_actual()
+    lista_categorias = ", ".join(categorias_gasto_visibles())
     prompt_sistema = f"""
     Eres un asistente financiero estricto. Analiza el mensaje y extrae los datos del gasto.
-    Categorías permitidas: [{CATEGORIAS_TEXTO}].
-    {ACLARACION_CATEGORIAS}
+    Categorías permitidas: [{lista_categorias}].
+    {tema["aclaracion"]}
     Devuelve un JSON con esta estructura exacta: {{"monto": 0.0, "categoria": "Categoría", "descripcion": "Descripción breve"}}
     """
     contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
-    return await generar_con_reintentos(contenido)
+    resultado = await generar_con_reintentos(contenido)
+    return normalizar_categoria_ia(resultado)
 
 async def procesar_ingreso_con_ia(texto_usuario: str):
+    lista_categorias = ", ".join(categorias_ingreso_visibles())
     prompt_sistema = f"""
     Eres un asistente financiero. Analiza el mensaje y extrae los datos de un INGRESO de dinero
-    (no un gasto). Categorías permitidas: [{CATEGORIAS_INGRESO_TEXTO}].
+    (no un gasto). Categorías permitidas: [{lista_categorias}].
     Devuelve un JSON con esta estructura exacta: {{"monto": 0.0, "categoria": "Categoría", "descripcion": "Descripción breve"}}
     """
     contenido = f"{prompt_sistema}\n\nMensaje: {texto_usuario}"
-    return await generar_con_reintentos(contenido)
+    resultado = await generar_con_reintentos(contenido)
+    return normalizar_categoria_ia(resultado, es_ingreso=True)
 
 async def procesar_eliminacion_con_ia(texto_usuario: str) -> dict:
     """Se usa cuando detectamos que el usuario quiere eliminar/borrar/cancelar una transacción
@@ -242,7 +248,7 @@ async def extraer_categoria_con_ia(texto_usuario: str, categorias_validas: list)
     """Se usa cuando el usuario responde a la confirmación de una transacción con un texto
     libre que debería indicar la categoría correcta (ej. "esto es del super", "mejor ponlo en
     ocio"), y ni la coincidencia exacta ni los alias conocidos lo resolvieron."""
-    lista_texto = ", ".join(categorias_validas)
+    lista_texto = ", ".join(nombre_visible(c) for c in categorias_validas)
     prompt_sistema = f"""
     El usuario está respondiendo a la confirmación de una transacción para indicar a qué
     categoría pertenece. Dado su mensaje, determina a cuál de estas categorías se refiere:
@@ -261,6 +267,10 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     eliminar) coincidió con el mensaje. Decide si realmente es un gasto, un ingreso, una
     corrección de categoría, una eliminación, o algo fuera del alcance del bot, en vez de
     asumir por defecto que es un gasto."""
+    tema = tema_actual()
+    lista_gastos = ", ".join(categorias_gasto_visibles())
+    lista_ingresos = ", ".join(categorias_ingreso_visibles())
+    ejemplo = nombre_categoria("Refugio")
     prompt_sistema = f"""
     Eres el clasificador de intención de un bot de finanzas personales por WhatsApp. El bot
     SOLO puede: registrar gastos, registrar ingresos, corregir la categoría de un gasto ya
@@ -271,20 +281,20 @@ async def clasificar_mensaje_libre_con_ia(texto_usuario: str) -> dict:
     Analiza el mensaje del usuario:
     - Si describe un GASTO real (algo que compró, pagó o gastó, con o sin monto explícito),
       responde: {{"intencion": "gasto"}}
-    - Si describe un INGRESO real (dinero que recibió: Botín principal, Botín de mercenario, regalo, venta, reintegro, etc.),
+    - Si describe un INGRESO real (dinero que recibió: {lista_ingresos}, regalo, venta, reintegro, etc.),
       responde: {{"intencion": "ingreso"}}
     - Si pide CAMBIAR/CORREGIR la categoría de un gasto que ya registró antes (identificándolo
-      por su descripción o nombre, ej. "pon el gasto de Jennifer González en Refugio"),
+      por su descripción o nombre, ej. "pon el gasto de Jennifer González en {ejemplo}"),
       responde: {{"intencion": "corregir_categoria", "descripcion_buscada": "el texto que
-      identifica el gasto original", "categoria_nueva": "una de [{CATEGORIAS_TEXTO}]"}}
+      identifica el gasto original", "categoria_nueva": "una de [{lista_gastos}]"}}
     - Si pide ELIMINAR/BORRAR/CANCELAR/ANULAR un gasto o ingreso ya registrado (identificándolo
       por su descripción, o "el último gasto/ingreso" si no da descripción concreta), responde:
       {{"intencion": "eliminar_transaccion", "descripcion_buscada": "el texto que identifica
       la transacción (o '' si dijo 'el último')", "tipo": "gasto" o "ingreso" o "desconocido"}}
     - Si es cualquier otra cosa (saludo, pregunta general, petición fuera del alcance del bot,
       o un mensaje ambiguo sin relación clara a lo anterior), responde:
-      {{"intencion": "no_soportado", "respuesta": "..."}} donde "respuesta" es 🧌 seguido de un mensaje breve,
-      en español y con un tono de RPG estilo dark souls, explicando que no puedes ayudar con eso, y recordando brevemente
+      {{"intencion": "no_soportado", "respuesta": "..."}} donde "respuesta" es {tema["ia_tono_no_soportado"]},
+      explicando que no puedes ayudar con eso, y recordando brevemente
       qué sí puedes hacer (registrar gastos e ingresos por texto o foto, corregir categorías,
       eliminar registros, generar resúmenes, calcular porcentajes/balance, y exportar a Excel).
 
@@ -337,6 +347,9 @@ async def transcribir_audio_con_ia(audio_bytes: bytes, mime_type: str) -> str:
     return (resultado.get("transcripcion") or "").strip()
 
 async def procesar_imagen_transacciones_con_ia(imagen: Image.Image):
+    tema = tema_actual()
+    lista_gastos = ", ".join(categorias_gasto_visibles())
+    lista_ingresos = ", ".join(categorias_ingreso_visibles())
     prompt_sistema = f"""
     Eres un asistente financiero. La imagen puede ser UN SOLO recibo/ticket de compra,
     o una captura de pantalla de una app bancaria con VARIOS movimientos/transacciones.
@@ -346,11 +359,11 @@ async def procesar_imagen_transacciones_con_ia(imagen: Image.Image):
       compra/pago). "Ingreso" si el monto entra a la cuenta (aparece con signo positivo "+",
       o en color verde).
     - "monto": el valor absoluto del monto, SIN el signo.
-    - "categoria": si tipo es "Gasto", elige una de [{CATEGORIAS_TEXTO}].
-      Si tipo es "Ingreso", elige una de [{CATEGORIAS_INGRESO_TEXTO}].
+    - "categoria": si tipo es "Gasto", elige una de [{lista_gastos}].
+      Si tipo es "Ingreso", elige una de [{lista_ingresos}].
     - "descripcion": el nombre del comercio, persona o concepto, tal como aparece.
 
-    {ACLARACION_CATEGORIAS}
+    {tema["aclaracion"]}
     Ignora movimientos que sean transferencias internas entre cuentas propias del mismo banco
     (ej. "Move", "Exchange", "Conversión") si logras identificarlos como tales.
 
@@ -361,6 +374,14 @@ async def procesar_imagen_transacciones_con_ia(imagen: Image.Image):
     transacciones = resultado.get("transacciones") if isinstance(resultado, dict) else None
     if not transacciones or not isinstance(transacciones, list):
         return []
+    # Traducir las categorías (nombres del tema del usuario) a los nombres internos
+    for t in transacciones:
+        if isinstance(t, dict):
+            es_ingreso = t.get("tipo") == "Ingreso"
+            validas = CATEGORIAS_INGRESO if es_ingreso else CATEGORIAS
+            interna = resolver_categoria(t.get("categoria", ""), validas)
+            if interna:
+                t["categoria"] = interna
     return transacciones
 
 # --- 3. BASE DE DATOS (SUPABASE) ---
@@ -561,11 +582,23 @@ async def eliminar_ingreso(ingreso_id: str) -> bool:
     return True
 
 def resolver_categoria(categoria_texto: str, categorias_validas: list):
+    """Devuelve el nombre INTERNO de la categoría a la que se refiere el texto. Acepta el
+    nombre interno (sin importar mayúsculas/tildes) o el nombre que se muestra en cualquiera
+    de los temas (ej. 'Ocio y restauración' -> 'Taberna')."""
     if not categoria_texto:
         return None
+    objetivo = categoria_texto.strip().lower()
     for c in categorias_validas:
-        if c.strip().lower() == categoria_texto.strip().lower():
+        if c.strip().lower() == objetivo:
             return c
+    objetivo_norm = normalizar(categoria_texto.strip())
+    for c in categorias_validas:
+        if normalizar(c) == objetivo_norm:
+            return c
+        for datos in TEMAS.values():
+            visible = datos["categorias"].get(c) or datos["ingresos"].get(c)
+            if visible and normalizar(visible) == objetivo_norm:
+                return c
     return None
 
 async def obtener_gastos(numero: str, desde: datetime, hasta: datetime, categoria: str = None):
@@ -746,13 +779,6 @@ def normalizar(texto: str) -> str:
     texto = "".join(c for c in unicodedata.normalize("NFD", texto) if unicodedata.category(c) != "Mn")
     return texto
 
-INGRESO_EMOJIS_NORM = {normalizar(k): v for k, v in INGRESO_EMOJIS.items()}
-
-def emoji_ingreso(categoria: str) -> str:
-    """Busca el emoji de una categoría de ingreso de forma tolerante a tildes/mayúsculas,
-    para no perder el emoji por variaciones en cómo quedó guardado el texto."""
-    return INGRESO_EMOJIS_NORM.get(normalizar(categoria or ""), "❓")
-
 PALABRAS_INFORME = [
     "resumen", "informe", "reporte", "detalle", "detallame", "detalla", "muestrame",
     "cuanto gaste", "cuanto he gastado",
@@ -786,6 +812,7 @@ ALIASES_CATEGORIA = {
     "hormigas": "Fugas de oro", "hormiga": "Fugas de oro",
     "tabaco": "Vicios", "cigarros": "Vicios",
     "otros": "Miscelánea",
+    "mascota": "Compañero", "mascotas": "Compañero",
 }
 
 def _coincide_periodo(texto_norm: str, palabras_clave: list) -> bool:
@@ -841,19 +868,27 @@ def detectar_solicitud_eliminar(texto: str) -> bool:
     texto_norm = normalizar(texto)
     return any(re.search(rf"\b{re.escape(p)}\b", texto_norm) for p in PALABRAS_ELIMINAR)
 
+def _nombres_conocidos(canonicas: list, clave_tema: str) -> dict:
+    """{nombre normalizado: nombre interno} con el nombre interno y los nombres de todos los
+    temas, para entender al usuario aunque use palabras de otro tema."""
+    pares = {normalizar(c): c for c in canonicas}
+    for datos in TEMAS.values():
+        for interno, visible in datos[clave_tema].items():
+            pares[normalizar(visible)] = interno
+    return pares
+
 def detectar_categoria_informe(texto: str):
     """Detecta a qué categoría de GASTO se refiere el mensaje, ya sea porque el usuario
-    escribió el nombre exacto de la categoría (ej. "ofrendas", "taberna") o un alias
-    conocido (ej. "super", "ocio", "regalo")."""
+    escribió el nombre de la categoría (en cualquier tema, ej. "ofrendas" o "regalos") o un
+    alias conocido (ej. "super", "ocio", "regalo")."""
     texto_norm = normalizar(texto)
 
-    # 1) Coincidencia directa con el nombre real de la categoría.
-    #    Se ordenan por longitud descendente para que, p.ej., "Monturas" no
-    #    quede eclipsada por una coincidencia parcial más corta.
-    for cat in sorted(CATEGORIAS, key=len, reverse=True):
-        cat_norm = normalizar(cat)
-        if re.search(rf"\b{re.escape(cat_norm)}\b", texto_norm):
-            return cat
+    # 1) Coincidencia directa con el nombre de la categoría. Los nombres más largos primero,
+    #    para que "salud y cuidado personal" no quede eclipsada por "salud".
+    pares = _nombres_conocidos(CATEGORIAS, "categorias")
+    for nombre_norm in sorted(pares, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(nombre_norm)}\b", texto_norm):
+            return pares[nombre_norm]
 
     # 2) Alias más largos primero, para que "vivienda" no se coma casos más específicos, etc.
     for alias in sorted(ALIASES_CATEGORIA.keys(), key=len, reverse=True):
@@ -864,12 +899,12 @@ def detectar_categoria_informe(texto: str):
 
 def detectar_categoria_ingreso_informe(texto: str):
     """Igual que detectar_categoria_informe pero para categorías de INGRESO (ej. "cuánto he
-    recibido de Botín de mercenario este mes")."""
+    recibido de Botín de mercenario / Trabajo extra este mes")."""
     texto_norm = normalizar(texto)
-    for cat in sorted(CATEGORIAS_INGRESO, key=len, reverse=True):
-        cat_norm = normalizar(cat)
-        if re.search(rf"\b{re.escape(cat_norm)}\b", texto_norm):
-            return cat
+    pares = _nombres_conocidos(CATEGORIAS_INGRESO, "ingresos")
+    for nombre_norm in sorted(pares, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(nombre_norm)}\b", texto_norm):
+            return pares[nombre_norm]
     return None
 
 async def calcular_rango_fechas(periodo: str, numero: str = None):
@@ -931,10 +966,394 @@ MENSAJE_MODO_SUPERVIVENCIA = (
     "¡Has entrado en MODO SUPERVIVENCIA! Recupera recursos antes de continuar."
 )
 
+# ======================================================================================
+# TEMAS (apariencia por usuario)
+# ======================================================================================
+# Los nombres INTERNOS de categoría (los de CATEGORIAS y CATEGORIAS_INGRESO, es decir, los
+# nombres RPG) son lo que se guarda en Supabase y lo que usa toda la lógica del bot.
+# Cada tema solo cambia cómo se MUESTRAN las cosas al usuario (nombres de categoría,
+# emojis, textos) y cómo se le explican las categorías a Gemini. Así el historial existente
+# no se toca y cualquier usuario puede cambiar de tema sin perder nada.
+#
+# Tema de cada usuario: tabla 'usuarios' de Supabase (numero, tema). Si no tiene fila:
+#   - tu número (MI_NUMERO_WHATSAPP) usa 'rpg'
+#   - el resto usa TEMA_DEFECTO (variable de entorno opcional, por defecto 'clasico')
+# Para cambiarlo, el usuario escribe "tema clasico" o "tema rpg".
+
+TEMAS = {
+    "rpg": {
+        "nombre": "RPG (fantasía oscura)",
+        "categorias": {c: c for c in CATEGORIAS},
+        "ingresos": {c: c for c in CATEGORIAS_INGRESO},
+        "emojis": CATEGORIA_EMOJIS,
+        "emojis_ingreso": INGRESO_EMOJIS,
+        "aclaracion": ACLARACION_CATEGORIAS,
+        "alertas": UMBRALES_AHORRO,
+        "alerta_supervivencia": MENSAJE_MODO_SUPERVIVENCIA,
+        "ia_tono_no_soportado": "🧌 seguido de un mensaje breve, en español y con un tono de RPG estilo dark souls",
+        "textos": {
+            "error_transaccion": "🧌 Los escribas no comprendieron esa transacción. ¿Puedes narrarla de otra forma?",
+            "confirm_titulo": "📯 Transacción registrada",
+            "confirm_monto": "🪎 Monto",
+            "confirm_categoria": "🔖 Categoría",
+            "confirm_descripcion": "🪶 Descripción",
+            "confirm_fecha": "🌔 Fecha",
+            "confirm_hora": "⌛️ Hora",
+            "confirm_tipo_gasto": "🀄️ Tipo: Desembolso",
+            "confirm_tipo_ingreso": "🀄️ Tipo: Botín",
+            "error_ingreso": "🧌 El heraldo no logró registrar ese botín. Inténtalo de nuevo.",
+            "lote_vacio": "🧌 No pude leer ningún movimiento en ese pergamino. ¿Tienes una imagen más clara?",
+            "lote_titulo": "📯 {total} Transacciones registradas",
+            "lote_fecha": "🌔 {fecha} — ⏳ {hora}",
+            "lote_gastos": "🍂 Gastos ({total}):",
+            "lote_ingresos": "🪎 Ingresos ({total}):",
+            "informe_titulo": "📜 Crónica de {etiqueta}",
+            "informe_sin_gastos": "Tus arcas descansan sin gastos durante este período. 🎊",
+            "informe_gasto_total": "🍂 Desembolso total: {monto}",
+            "informe_desglose": "Desglose del inventario:",
+            "informe_ingreso_total": "🪎 Botín total: {monto}",
+            "informe_saldo": "🧮 Tesoro restante: {signo}{monto}",
+            "informe_saldo_pct": "🧮 Tesoro restante: {signo}{monto} ({pct:.1f}% de tus ingresos gastado)",
+            "informe_ingresos_vacio": "No se han registrado botines de esta categoría durante este período. 🎊",
+            "reparto_sin_gastos": "📜 Tus arcas descansan sin gastos {periodo}. 🎊",
+            "reparto_titulo": "📜 Reparto del tesoro {periodo}",
+            "reparto_gasto_total": "🍂 Desembolso total: {pct:.1f}%",
+            "reparto_total_monto": "🍂 Desembolso total: {monto}",
+            "reparto_restante": "🪎 Botín restante: {pct:.1f}%",
+            "balance_titulo": "⚖️ Balance de arcas {periodo}",
+            "balance_ingresos": "🪎 Botín recaudado: {monto}",
+            "balance_gastos": "🍂 Oro gastado: {monto}",
+            "balance_neto": "🧮 Tesoro neto: {monto}",
+            "balance_pct": "📜 Has consumido el {pct:.1f}% de tu botín",
+            "balance_sin_ingresos": "🧌 No tienes ingresos registrados en este período.",
+            "elim_no_encontrado": "🧌 No hallé ningún registro en los libros{busq}.",
+            "elim_titulo": "🧙🏻‍♂️ Registro eliminado de las arcas",
+            "elim_linea": "• {desc} ({monto}) 🪶",
+            "elim_cat": "• Categoria: {cat}{extra} {emoji}",
+            "elim_error": "🧌 El archivero no pudo eliminar ese registro. Intenta de nuevo en un momento.",
+            "recl_categoria_invalida": "🧌 No reconocí esa categoría. Responde con el nombre de una categoría válida, o escribe \"elimina\" para borrar este registro.",
+            "recl_titulo": "🧙🏻‍♂️ Registro reclasificado",
+            "recl_linea": "• {desc} ({monto}) 🪶",
+            "recl_ahora": "• Ahora está en: {cat}{extra} {emoji}",
+            "recl_error": "🧌 El archivero no pudo reclasificar ese registro. Intenta de nuevo en un momento.",
+            "recl_no_interpreta": "🧌 El escriba no ha logrado interpretar tu petición. ¿Puedes reformularlo? (ej. \"pon el gasto de Jennifer en {ejemplo}\")",
+            "recl_no_hallado": "🧌 No hallé ningún registro en los libros que coincida con \"{busca}\".",
+            "ciclo_suma": "🏛️ Has sumado {monto} a tu fortuna.",
+            "ciclo_resta": "🏛️ Has restado {monto} a tu fortuna.",
+            "ciclo_caption": "🧧 Libro de cuentas — Ciclo cerrado ({etiqueta})",
+            "ciclo_error_excel": "🧌 El escriba no ha podido preparar el pergamino del ciclo cerrado, pero tu fortuna quedó registrada.",
+            "export_vacio": "🧌 No hay movimientos en tus arcas durante {etiqueta}.",
+            "export_caption": "🧧 Libro de cuentas\n • {etiqueta}",
+            "export_error": "🧌 El escriba no ha podido preparar el pergamino. Inténtalo de nuevo en unos instantes.",
+            "excel_hoja": "Libro Mayor",
+            "audio_error": "🧌 El escriba no logró descifrar tu mensaje de voz. ¿Puedes repetirlo o escribirlo?",
+            "no_soportado": (
+                "🧌 No puedo ayudarte con eso. Puedo registrar tus gastos e ingresos "
+                "(por texto o foto), generar resúmenes, calcular porcentajes/balance, "
+                "corregir categorías, eliminar registros, y exportar tus datos a Excel. "
+                "Escribe \"tema\" para cambiar el aspecto del bot."
+            ),
+            "tema_cambiado": "🎨 Tema cambiado: vuelves al reino del RPG de fantasía oscura. Tus registros siguen intactos.",
+        },
+    },
+    "clasico": {
+        "nombre": "Clásico (finanzas personales)",
+        # nombre interno (el que se guarda en Supabase) -> nombre que ve el usuario
+        "categorias": {
+            "Taberna": "Ocio y restauración",
+            "Provisiones": "Supermercado",
+            "Monturas": "Vehículo y transporte",
+            "Pactos": "Suscripciones",
+            "Refugio": "Vivienda y servicios",
+            "Adquisiciones": "Compras",
+            "Ofrendas": "Regalos",
+            "Compañero": "Mascota",
+            "Estamina": "Salud y cuidado personal",
+            "Sabiduría": "Educación",
+            "Tributos": "Finanzas",
+            "Fugas de oro": "Gastos hormiga",
+            "Vicios": "Tabaco",
+            "Miscelánea": "Otros",
+        },
+        "ingresos": {
+            "Botín principal": "Ingreso principal",
+            "Botín de mercenario": "Trabajo extra",
+            "Recompensas extra": "Bonificaciones",
+            "Ofrenda de aliados": "Regalos recibidos",
+            "Objeto encontrado": "Otros ingresos",
+        },
+        "emojis": {
+            "Taberna": "🍽️",
+            "Provisiones": "🛒",
+            "Monturas": "🚗",
+            "Pactos": "🔁",
+            "Refugio": "🏠",
+            "Adquisiciones": "🛍️",
+            "Ofrendas": "🎁",
+            "Compañero": "🐾",
+            "Estamina": "💊",
+            "Sabiduría": "📚",
+            "Tributos": "🏦",
+            "Fugas de oro": "🐜",
+            "Vicios": "🚬",
+            "Miscelánea": "📦",
+        },
+        "emojis_ingreso": {
+            "Botín principal": "💰",
+            "Botín de mercenario": "🛠️",
+            "Recompensas extra": "✨",
+            "Ofrenda de aliados": "🎁",
+            "Objeto encontrado": "📥",
+        },
+        "aclaracion": (
+            "Distingue bien entre estas categorías que se prestan a confusión:\n"
+            "- 'Ocio y restauración': comer/beber fuera de casa (restaurantes, bares, cafeterías, "
+            "comida a domicilio) y entretenimiento puntual (cine, conciertos, videojuegos, salidas).\n"
+            "- 'Suscripciones': CUALQUIER pago recurrente/periódico, sea de entretenimiento o no "
+            "(Netflix, Spotify, Tidal, iCloud/Apple Cloud, Google Cloud, ChatGPT Plus, Suno, hosting, "
+            "dominios, gimnasio con cuota mensual, etc.).\n"
+            "- 'Gastos hormiga': gastos pequeños, impulsivos y cotidianos hechos en la calle o al paso "
+            "(un refresco, un café rápido, chicles, prensa, una chocolatina), distintos de una comida "
+            "completa en restaurante (que va en 'Ocio y restauración') o de la compra grande de "
+            "supermercado.\n"
+            "- 'Tabaco': únicamente gastos en tabaco y cigarros.\n"
+            "- 'Regalos': regalos para otras personas (cumpleaños, Navidad, aniversarios, etc.), "
+            "distintos a otro tipo de compras (que va en 'Compras').\n"
+            "- 'Mascota': compras para mascotas como pienso, juguetes para perros, juguetes para conejos, etc."
+        ),
+        "alertas": [
+            (70, "🟡 AVISO DE GASTO",
+             "Has gastado el 70% de tus ingresos. Conviene vigilar tus próximos movimientos."),
+            (75, "🟠 GASTO ELEVADO",
+             "Has alcanzado el 75% de tus ingresos. Cada gasto adicional reduce tu margen de ahorro."),
+            (80, "🔴 MARGEN CRÍTICO",
+             "Solo te queda un 20% de tus ingresos. Se recomienda limitar los gastos hasta el final del ciclo."),
+            (90, "🚨 ÚLTIMO TRAMO",
+             "Has gastado más del 90% de tus ingresos. Cualquier gasto extra te deja casi sin margen."),
+            (100, "⛔ PRESUPUESTO AGOTADO",
+             "Has gastado todos tus ingresos. Cualquier gasto adicional te dejará en negativo."),
+        ],
+        "alerta_supervivencia": (
+            "💥 EN NÚMEROS ROJOS",
+            "Estás gastando por encima de tus ingresos. Procura recuperar margen cuanto antes."
+        ),
+        "ia_tono_no_soportado": "ℹ️ seguido de un mensaje breve, amable, en español y con un tono claro y neutro",
+        "textos": {
+            "error_transaccion": "⚠️ No pude entender esa transacción. ¿Puedes escribirla de otra forma?",
+            "confirm_titulo": "✅ Transacción registrada",
+            "confirm_monto": "💶 Monto",
+            "confirm_categoria": "🔖 Categoría",
+            "confirm_descripcion": "📝 Descripción",
+            "confirm_fecha": "📅 Fecha",
+            "confirm_hora": "⏰ Hora",
+            "confirm_tipo_gasto": "🧾 Tipo: Gasto",
+            "confirm_tipo_ingreso": "🧾 Tipo: Ingreso",
+            "error_ingreso": "⚠️ No pude registrar ese ingreso. Inténtalo de nuevo.",
+            "lote_vacio": "⚠️ No pude leer ningún movimiento en esa imagen. ¿Tienes una más clara?",
+            "lote_titulo": "✅ {total} transacciones registradas",
+            "lote_fecha": "📅 {fecha} — ⏰ {hora}",
+            "lote_gastos": "💸 Gastos ({total}):",
+            "lote_ingresos": "💰 Ingresos ({total}):",
+            "informe_titulo": "📊 Resumen de {etiqueta}",
+            "informe_sin_gastos": "No hay gastos registrados en este período. 🎉",
+            "informe_gasto_total": "💸 Gastos totales: {monto}",
+            "informe_desglose": "Desglose por categoría:",
+            "informe_ingreso_total": "💰 Ingresos totales: {monto}",
+            "informe_saldo": "🧮 Saldo restante: {signo}{monto}",
+            "informe_saldo_pct": "🧮 Saldo restante: {signo}{monto} ({pct:.1f}% de tus ingresos gastado)",
+            "informe_ingresos_vacio": "No hay ingresos de esta categoría en este período.",
+            "reparto_sin_gastos": "📊 No hay gastos registrados {periodo}. 🎉",
+            "reparto_titulo": "📊 Reparto de gastos {periodo}",
+            "reparto_gasto_total": "💸 Gastos totales: {pct:.1f}%",
+            "reparto_total_monto": "💸 Gastos totales: {monto}",
+            "reparto_restante": "💰 Ingresos restantes: {pct:.1f}%",
+            "balance_titulo": "⚖️ Balance {periodo}",
+            "balance_ingresos": "💰 Ingresos: {monto}",
+            "balance_gastos": "💸 Gastos: {monto}",
+            "balance_neto": "🧮 Balance neto: {monto}",
+            "balance_pct": "📊 Has gastado el {pct:.1f}% de tus ingresos",
+            "balance_sin_ingresos": "ℹ️ No tienes ingresos registrados en este período.",
+            "elim_no_encontrado": "⚠️ No encontré ningún registro{busq}.",
+            "elim_titulo": "🗑️ Registro eliminado",
+            "elim_linea": "• {desc} ({monto})",
+            "elim_cat": "• Categoría: {cat}{extra} {emoji}",
+            "elim_error": "⚠️ No pude eliminar ese registro. Inténtalo de nuevo en un momento.",
+            "recl_categoria_invalida": "⚠️ No reconocí esa categoría. Responde con el nombre de una categoría válida, o escribe \"elimina\" para borrar este registro.",
+            "recl_titulo": "🔄 Registro reclasificado",
+            "recl_linea": "• {desc} ({monto})",
+            "recl_ahora": "• Ahora está en: {cat}{extra} {emoji}",
+            "recl_error": "⚠️ No pude reclasificar ese registro. Inténtalo de nuevo en un momento.",
+            "recl_no_interpreta": "⚠️ No entendí tu petición. ¿Puedes reformularla? (ej. \"pon el gasto de Jennifer en {ejemplo}\")",
+            "recl_no_hallado": "⚠️ No encontré ningún registro que coincida con \"{busca}\".",
+            "ciclo_suma": "🏦 Has sumado {monto} a tus ahorros.",
+            "ciclo_resta": "🏦 Has restado {monto} de tus ahorros.",
+            "ciclo_caption": "📎 Resumen de cuentas — Ciclo cerrado ({etiqueta})",
+            "ciclo_error_excel": "⚠️ No pude preparar el Excel del ciclo cerrado, pero el balance quedó registrado.",
+            "export_vacio": "ℹ️ No hay movimientos durante {etiqueta}.",
+            "export_caption": "📎 Exportación de cuentas\n • {etiqueta}",
+            "export_error": "⚠️ No pude preparar el archivo. Inténtalo de nuevo en unos instantes.",
+            "excel_hoja": "Cuentas",
+            "audio_error": "⚠️ No pude entender tu mensaje de voz. ¿Puedes repetirlo o escribirlo?",
+            "no_soportado": (
+                "ℹ️ No puedo ayudarte con eso. Puedo registrar tus gastos e ingresos "
+                "(por texto o foto), generar resúmenes, calcular porcentajes/balance, "
+                "corregir categorías, eliminar registros, y exportar tus datos a Excel. "
+                "Escribe \"tema\" para cambiar el aspecto del bot."
+            ),
+            "tema_cambiado": "🎨 Tema cambiado a Clásico. Tus registros siguen intactos; solo cambia cómo se muestran.",
+        },
+    },
+}
+
+# Versión de los emojis de ingreso tolerante a tildes/mayúsculas, para cada tema
+for _tema in TEMAS.values():
+    _tema["emojis_ingreso_norm"] = {normalizar(k): v for k, v in _tema["emojis_ingreso"].items()}
+
+TEMA_DEFECTO = (os.getenv("TEMA_DEFECTO") or "clasico").strip().lower()
+if TEMA_DEFECTO not in TEMAS:
+    TEMA_DEFECTO = "clasico"
+
+# Tema del usuario que se está atendiendo en este momento. Se fija al inicio de cada mensaje
+# (procesar_mensaje_entrante / procesar_pago_wallet) y cada tarea asíncrona tiene su propia
+# copia, así que dos usuarios escribiendo a la vez no se mezclan.
+TEMA_ACTUAL = ContextVar("tema_actual", default=TEMA_DEFECTO)
+CACHE_TEMAS = {}
+
+def tema_actual() -> dict:
+    return TEMAS.get(TEMA_ACTUAL.get(), TEMAS[TEMA_DEFECTO])
+
+def T(clave: str, **kw) -> str:
+    """Texto del tema actual. Si lleva parámetros se rellenan con str.format."""
+    texto = tema_actual()["textos"][clave]
+    return texto.format(**kw) if kw else texto
+
+def nombre_categoria(cat) -> str:
+    """Nombre visible (según el tema) de una categoría de GASTO guardada."""
+    return tema_actual()["categorias"].get(cat, cat)
+
+def nombre_ingreso(cat) -> str:
+    """Nombre visible (según el tema) de una categoría de INGRESO guardada."""
+    return tema_actual()["ingresos"].get(cat, cat)
+
+def nombre_visible(cat) -> str:
+    t = tema_actual()
+    return t["categorias"].get(cat) or t["ingresos"].get(cat) or cat
+
+def emoji_categoria(cat) -> str:
+    return tema_actual()["emojis"].get(cat, "❓")
+
+def emoji_ingreso(categoria: str) -> str:
+    """Emoji de una categoría de ingreso, tolerante a tildes/mayúsculas, según el tema."""
+    return tema_actual()["emojis_ingreso_norm"].get(normalizar(categoria or ""), "❓")
+
+def categorias_gasto_visibles() -> list:
+    return [nombre_categoria(c) for c in CATEGORIAS]
+
+def categorias_ingreso_visibles() -> list:
+    return [nombre_ingreso(c) for c in CATEGORIAS_INGRESO]
+
+def normalizar_categoria_ia(resultado, es_ingreso: bool = False):
+    """Gemini responde con los nombres que ve el usuario en su tema. Antes de guardar o usar
+    el resultado se traduce al nombre interno (el de Supabase)."""
+    if isinstance(resultado, dict):
+        validas = CATEGORIAS_INGRESO if es_ingreso else CATEGORIAS
+        interna = resolver_categoria(resultado.get("categoria", ""), validas)
+        if interna:
+            resultado["categoria"] = interna
+    return resultado
+
+# --- Tema por usuario (Supabase: tabla 'usuarios') ---
+def tema_por_defecto(numero: str) -> str:
+    if MI_NUMERO_WHATSAPP and numero == MI_NUMERO_WHATSAPP:
+        return "rpg"
+    return TEMA_DEFECTO
+
+async def obtener_tema_usuario(numero: str) -> str:
+    """Tema guardado del usuario. Si no tiene fila (o la tabla/Supabase no responde) se usa el
+    tema por defecto; en ese caso no se cachea, para volver a intentarlo en el siguiente mensaje."""
+    if numero in CACHE_TEMAS:
+        return CACHE_TEMAS[numero]
+    url = f"{SUPABASE_URL}/rest/v1/usuarios"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+    }
+    params = {"numero": f"eq.{numero}", "select": "tema", "limit": "1"}
+    try:
+        respuesta = await request_con_reintentos("GET", url, headers, params=params, intentos=1)
+        if respuesta is not None and respuesta.status_code == 200:
+            filas = respuesta.json()
+            tema = filas[0].get("tema") if filas else None
+            if tema not in TEMAS:
+                tema = tema_por_defecto(numero)
+            CACHE_TEMAS[numero] = tema
+            return tema
+    except Exception as e:
+        print(f"⚠️ No se pudo leer el tema del usuario (se usa el de por defecto): {type(e).__name__}: {e}")
+    return tema_por_defecto(numero)
+
+async def guardar_tema_usuario(numero: str, tema: str) -> bool:
+    url = f"{SUPABASE_URL}/rest/v1/usuarios"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates,return=minimal",
+    }
+    params = {"on_conflict": "numero"}
+    respuesta = await request_con_reintentos(
+        "POST", url, headers, json_payload={"numero": numero, "tema": tema}, params=params
+    )
+    if respuesta is None or respuesta.status_code not in (200, 201, 204):
+        codigo = respuesta.status_code if respuesta else "sin respuesta"
+        texto = respuesta.text if respuesta else ""
+        print(f"⚠️ Error guardando el tema en Supabase: {codigo} - {texto}")
+        return False
+    CACHE_TEMAS[numero] = tema
+    return True
+
+ALIAS_TEMAS = {
+    "rpg": "rpg", "medieval": "rpg", "fantasia": "rpg", "oscuro": "rpg",
+    "clasico": "clasico", "clasica": "clasico", "generico": "clasico", "generica": "clasico",
+    "normal": "clasico", "estandar": "clasico", "simple": "clasico", "sencillo": "clasico",
+}
+
+def detectar_solicitud_tema(texto: str):
+    """None si el mensaje no habla de temas; la clave del tema si pide uno concreto
+    (ej. 'tema clásico', 'cambia el tema a rpg'); 'lista' si solo menciona 'tema'."""
+    n = normalizar(texto)
+    if len(n.split()) > 8 or re.search(r"\d", n):
+        return None  # un mensaje largo o con cifras es un gasto/ingreso, no un cambio de tema
+    if not re.search(r"\btemas?\b", n):
+        return None
+    for alias, clave in ALIAS_TEMAS.items():
+        if re.search(rf"\b{alias}\b", n):
+            return clave
+    return "lista"
+
+async def manejar_cambio_tema(numero: str, solicitud: str):
+    if solicitud == "lista":
+        opciones = "\n".join(f"• {clave} — {datos['nombre']}" for clave, datos in TEMAS.items())
+        await enviar_mensaje_whatsapp(
+            numero,
+            "🎨 Temas disponibles:\n"
+            f"{opciones}\n\n"
+            "Escribe, por ejemplo, \"tema clasico\" o \"tema rpg\".\n"
+            f"Tema actual: {tema_actual()['nombre']}"
+        )
+        return
+    if await guardar_tema_usuario(numero, solicitud):
+        TEMA_ACTUAL.set(solicitud)
+        print(f"🎨 Tema de {numero} cambiado a '{solicitud}'")
+        await enviar_mensaje_whatsapp(numero, T("tema_cambiado"))
+    else:
+        await enviar_mensaje_whatsapp(numero, "⚠️ No pude guardar el tema. Inténtalo de nuevo en un momento.")
+
 def determinar_alerta_ahorro(pct_antes: float, pct_despues: float):
+    tema = tema_actual()
     if pct_antes > 100 and pct_despues > pct_antes:
-        return MENSAJE_MODO_SUPERVIVENCIA
-    for umbral, titulo, texto in reversed(UMBRALES_AHORRO):
+        return tema["alerta_supervivencia"]
+    for umbral, titulo, texto in reversed(tema["alertas"]):
         if pct_antes < umbral <= pct_despues:
             return (titulo, texto)
     return None
@@ -996,43 +1415,41 @@ def formatear_linea_transaccion(item: dict) -> str:
 def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria: str = None, porcentaje: float = None) -> str:
     # --- Informe filtrado por una sola categoría de gasto (sin sección de ingresos/balance) ---
     if categoria:
-        emoji_cat = CATEGORIA_EMOJIS.get(categoria, "❓")
-        encabezado = f"{emoji_cat} {categoria}"
+        encabezado = f"{emoji_categoria(categoria)} {nombre_categoria(categoria)}"
         if porcentaje is not None:
             encabezado += f": {porcentaje:.1f}%"
-        titulo = f"📜 Crónica de {etiqueta}\n\n {encabezado}"
+        titulo = f"{T('informe_titulo', etiqueta=etiqueta)}\n\n {encabezado}"
         if not gastos:
-            return f"{titulo}\n\nTus arcas descansan sin gastos durante este período. 🎊"
+            return f"{titulo}\n\n{T('informe_sin_gastos')}"
         total = sum(float(g["monto"]) for g in gastos)
         lineas = [titulo]
         for g in sorted(gastos, key=lambda x: x.get("fecha", "")):
             lineas.append(formatear_linea_transaccion(g))
         lineas.append("")
-        lineas.append(f"🍂 Desembolso total: {formatear_monto(total)}")
+        lineas.append(T("informe_gasto_total", monto=formatear_monto(total)))
         return "\n".join(lineas)
 
     # --- Informe general: gastos por categoría + ingresos por categoría + balance ---
-    titulo = f"📜 Crónica de {etiqueta}"
+    titulo = T("informe_titulo", etiqueta=etiqueta)
     total_gastos = sum(float(g["monto"]) for g in gastos)
     total_ingresos = sum(float(i["monto"]) for i in ingresos)
 
-    lineas = [titulo, "", f"🍂 Desembolso total: {formatear_monto(total_gastos)}"]
+    lineas = [titulo, "", T("informe_gasto_total", monto=formatear_monto(total_gastos))]
 
     if gastos:
         por_categoria = {}
         for g in gastos:
             por_categoria.setdefault(g.get("categoria", "Miscelánea"), []).append(g)
         lineas.append("")
-        lineas.append("Desglose del inventario:")
+        lineas.append(T("informe_desglose"))
         for cat, lista in sorted(por_categoria.items(), key=lambda kv: -sum(float(x["monto"]) for x in kv[1])):
             total_cat = sum(float(x["monto"]) for x in lista)
-            emoji_cat = CATEGORIA_EMOJIS.get(cat, "❓")
-            lineas.append(f"{emoji_cat} {cat}: {formatear_monto_corto(total_cat)}")
+            lineas.append(f"{emoji_categoria(cat)} {nombre_categoria(cat)}: {formatear_monto_corto(total_cat)}")
             for g in sorted(lista, key=lambda x: x.get("fecha", "")):
                 lineas.append(formatear_linea_transaccion(g))
 
     lineas.append("")
-    lineas.append(f"🪎 Botín total: {formatear_monto(total_ingresos)}")
+    lineas.append(T("informe_ingreso_total", monto=formatear_monto(total_ingresos)))
 
     if ingresos:
         por_categoria_ing = {}
@@ -1040,35 +1457,56 @@ def generar_texto_informe(etiqueta: str, gastos: list, ingresos: list, categoria
             cat = i.get("categoria", "Miscelánea")
             por_categoria_ing[cat] = por_categoria_ing.get(cat, 0.0) + float(i["monto"])
         lineas.append("")
-        lineas.append("Desglose del inventario:")
+        lineas.append(T("informe_desglose"))
         for cat, total_cat in sorted(por_categoria_ing.items(), key=lambda x: -x[1]):
-            emoji_cat = emoji_ingreso(cat)
-            lineas.append(f"{emoji_cat} {cat}: {formatear_monto_corto(total_cat)}")
+            lineas.append(f"{emoji_ingreso(cat)} {nombre_ingreso(cat)}: {formatear_monto_corto(total_cat)}")
 
     balance = total_ingresos - total_gastos
     signo = "+" if balance >= 0 else "-"
     lineas.append("")
     if total_ingresos > 0:
         pct_gastado = (total_gastos / total_ingresos) * 100
-        lineas.append(f"🧮 Tesoro restante: {signo}{formatear_monto_corto(abs(balance))} ({pct_gastado:.1f}% de tus ingresos gastado)")
+        lineas.append(T("informe_saldo_pct", signo=signo, monto=formatear_monto_corto(abs(balance)), pct=pct_gastado))
     else:
-        lineas.append(f"🧮 Tesoro restante: {signo}{formatear_monto_corto(abs(balance))}")
+        lineas.append(T("informe_saldo", signo=signo, monto=formatear_monto_corto(abs(balance))))
 
     return "\n".join(lineas)
 
 def generar_texto_informe_ingresos(etiqueta: str, ingresos: list, categoria: str) -> str:
     """Análogo a generar_texto_informe pero para un informe de INGRESOS filtrado por una
     categoría de ingreso concreta (ej. "cuánto he recibido de Botín de mercenario")."""
-    emoji_cat = emoji_ingreso(categoria)
-    titulo = f"📜 Crónica de {etiqueta}\n\n{emoji_cat} {categoria}"
+    titulo = f"{T('informe_titulo', etiqueta=etiqueta)}\n\n{emoji_ingreso(categoria)} {nombre_ingreso(categoria)}"
     if not ingresos:
-        return f"{titulo}\n\nNo se han registrado botines de esta categoría durante este período. 🎊"
+        return f"{titulo}\n\n{T('informe_ingresos_vacio')}"
     total = sum(float(i["monto"]) for i in ingresos)
     lineas = [titulo]
     for i in sorted(ingresos, key=lambda x: x.get("fecha", "")):
         lineas.append(formatear_linea_transaccion(i))
     lineas.append("")
-    lineas.append(f"🪎 Botín total: {formatear_monto(total)}")
+    lineas.append(T("informe_ingreso_total", monto=formatear_monto(total)))
+    return "\n".join(lineas)
+
+def generar_texto_porcentaje(periodo: str, gastos: list) -> str:
+    """Reparto de gastos por categoría sobre el total GASTADO (se usa cuando no hay ingresos
+    registrados en el período y por tanto no hay base para calcular el % sobre ingresos)."""
+    etiqueta_periodo = ETIQUETAS_PERIODO.get(periodo, "en el período")
+    por_categoria = {}
+    for g in gastos:
+        cat = g.get("categoria", "Miscelánea")
+        por_categoria[cat] = por_categoria.get(cat, 0.0) + float(g["monto"])
+    total = sum(por_categoria.values())
+    if total <= 0:
+        return T("reparto_sin_gastos", periodo=etiqueta_periodo)
+
+    lineas = [
+        T("reparto_titulo", periodo=etiqueta_periodo),
+        "",
+        T("reparto_total_monto", monto=formatear_monto(total)),
+        "",
+    ]
+    for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
+        porcentaje = (monto / total) * 100
+        lineas.append(f"• {emoji_categoria(cat)} {nombre_categoria(cat)}: {porcentaje:.1f}%")
     return "\n".join(lineas)
 
 def generar_texto_reparto(periodo: str, gastos: list, total_ingresos: float) -> str:
@@ -1076,9 +1514,9 @@ def generar_texto_reparto(periodo: str, gastos: list, total_ingresos: float) -> 
     etiqueta_periodo = ETIQUETAS_PERIODO.get(periodo, "en el período")
 
     if not gastos:
-        return f"📜 Tus arcas descansan sin gastos {etiqueta_periodo}. 🎊"
+        return T("reparto_sin_gastos", periodo=etiqueta_periodo)
 
-    # Sin ingresos no hay base para el % sobre botín: se usa el reparto sobre gastos
+    # Sin ingresos no hay base para el % sobre ingresos: se usa el reparto sobre gastos
     if total_ingresos <= 0:
         return generar_texto_porcentaje(periodo, gastos)
 
@@ -1093,18 +1531,17 @@ def generar_texto_reparto(periodo: str, gastos: list, total_ingresos: float) -> 
     pct_restante = (restante / total_ingresos) * 100
 
     lineas = [
-        f"📜 Reparto del tesoro {etiqueta_periodo}",
+        T("reparto_titulo", periodo=etiqueta_periodo),
         "",
-        f"🍂 Desembolso total: {pct_gastos:.1f}%",
+        T("reparto_gasto_total", pct=pct_gastos),
         "",
     ]
     for cat, monto in sorted(por_categoria.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total_ingresos) * 100
-        emoji_cat = CATEGORIA_EMOJIS.get(cat, "❓")
-        lineas.append(f"• {emoji_cat} {cat}: {porcentaje:.1f}%")
+        lineas.append(f"• {emoji_categoria(cat)} {nombre_categoria(cat)}: {porcentaje:.1f}%")
 
     lineas.append("")
-    lineas.append(f"🪎 Botín restante: {pct_restante:.1f}%")
+    lineas.append(T("reparto_restante", pct=pct_restante))
 
     return "\n".join(lineas)
 
@@ -1146,34 +1583,33 @@ def generar_texto_balance(periodo: str, total_ingresos: float, total_gastos: flo
     balance = total_ingresos - total_gastos
 
     lineas = [
-        f"⚖️ Balance de arcas {etiqueta_periodo}",
+        T("balance_titulo", periodo=etiqueta_periodo),
         "",
-        f"🪎 Botín recaudado: {formatear_monto(total_ingresos)}",
-        f"🍂 Oro gastado: {formatear_monto(total_gastos)}",
-        f"🧮 Tesoro neto: {formatear_monto(balance)}",
+        T("balance_ingresos", monto=formatear_monto(total_ingresos)),
+        T("balance_gastos", monto=formatear_monto(total_gastos)),
+        T("balance_neto", monto=formatear_monto(balance)),
     ]
     if total_ingresos > 0:
         pct_gastado = (total_gastos / total_ingresos) * 100
-        lineas.append(f"📜 Has consumido el {pct_gastado:.1f}% de tu botín")
+        lineas.append(T("balance_pct", pct=pct_gastado))
     else:
-        lineas.append("🧌 No tienes ingresos registrados en este período.")
+        lineas.append(T("balance_sin_ingresos"))
 
     return "\n".join(lineas)
 
 def formatear_confirmacion_ingreso(datos: dict) -> str:
     if not datos.get("monto"):
-        return "🧌 El heraldo no logró registrar ese botín. Inténtalo de nuevo."
+        return T("error_ingreso")
     fecha_str, hora_str = formatear_fecha_hora_actual()
     categoria = datos.get("categoria", "Objeto encontrado")
-    emoji_categoria = emoji_ingreso(categoria)
     return (
-        "📯 Transacción registrada\n"
-        f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
-        f"• 🔖 Categoría: {categoria} {emoji_categoria}\n"
-        f"• 🪶 Descripción: {datos.get('descripcion')}\n"
-        f"• 🌔 Fecha: {fecha_str}\n"
-        f"• ⌛️ Hora: {hora_str}\n"
-        f"• 🀄️ Tipo: Botín"
+        f"{T('confirm_titulo')}\n"
+        f"• {T('confirm_monto')}: {formatear_monto(datos.get('monto'))}\n"
+        f"• {T('confirm_categoria')}: {nombre_ingreso(categoria)} {emoji_ingreso(categoria)}\n"
+        f"• {T('confirm_descripcion')}: {datos.get('descripcion')}\n"
+        f"• {T('confirm_fecha')}: {fecha_str}\n"
+        f"• {T('confirm_hora')}: {hora_str}\n"
+        f"• {T('confirm_tipo_ingreso')}"
     )
 
 # --- EXPORTAR EXCEL ---
@@ -1308,7 +1744,7 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Libro Mayor"
+    ws.title = T("excel_hoja")
 
     total_gastos = sum(float(g.get("monto", 0)) for g in gastos)
     total_ingresos = sum(float(i.get("monto", 0)) for i in ingresos)
@@ -1328,7 +1764,7 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
         except Exception:
             fecha_str = i.get("fecha", "")
         ws.cell(row=fila, column=1, value=fecha_str)
-        ws.cell(row=fila, column=2, value=i.get("categoria", "Miscelánea"))
+        ws.cell(row=fila, column=2, value=nombre_ingreso(i.get("categoria", "Miscelánea")))
         ws.cell(row=fila, column=3, value=float(i.get("monto", 0)))
         ws.cell(row=fila, column=4, value=i.get("descripcion", ""))
         fila += 1
@@ -1345,7 +1781,7 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
         except Exception:
             fecha_str = g.get("fecha", "")
         ws.cell(row=fila, column=1, value=fecha_str)
-        ws.cell(row=fila, column=2, value=g.get("categoria", "Miscelánea"))
+        ws.cell(row=fila, column=2, value=nombre_categoria(g.get("categoria", "Miscelánea")))
         ws.cell(row=fila, column=3, value=float(g.get("monto", 0)))
         ws.cell(row=fila, column=4, value=g.get("descripcion", ""))
         fila += 1
@@ -1360,7 +1796,7 @@ def generar_excel_gastos(gastos: list, ingresos: list) -> bytes:
     fila += 1
     for categoria, monto in sorted(por_categoria_gasto.items(), key=lambda x: -x[1]):
         porcentaje = (monto / total_ingresos) if total_ingresos else 0
-        ws.cell(row=fila, column=1, value=categoria)
+        ws.cell(row=fila, column=1, value=nombre_categoria(categoria))
         ws.cell(row=fila, column=2, value=monto)
         celda_pct = ws.cell(row=fila, column=3, value=porcentaje)
         celda_pct.number_format = "0.0%"
@@ -1460,42 +1896,41 @@ async def enviar_mensaje_whatsapp(numero_destino: str, texto: str):
 
 def formatear_confirmacion(datos: dict) -> str:
     if datos.get("categoria") == "Error":
-        return "🧌 Los escribas no comprendieron esa transacción. ¿Puedes narrarla de otra forma?"
+        return T("error_transaccion")
     fecha_str, hora_str = formatear_fecha_hora_actual()
     categoria = datos.get("categoria", "Miscelánea")
-    emoji_categoria = CATEGORIA_EMOJIS.get(categoria, "❓")
     return (
-        "📯 Transacción registrada\n"
-        f"• 🪎 Monto: {formatear_monto(datos.get('monto'))}\n"
-        f"• 🔖 Categoría: {categoria} {emoji_categoria}\n"
-        f"• 🪶 Descripción: {datos.get('descripcion')}\n"
-        f"• 🌔 Fecha: {fecha_str}\n"
-        f"• ⌛️ Hora: {hora_str}\n"
-        f"• 🀄️ Tipo: Desembolso"
+        f"{T('confirm_titulo')}\n"
+        f"• {T('confirm_monto')}: {formatear_monto(datos.get('monto'))}\n"
+        f"• {T('confirm_categoria')}: {nombre_categoria(categoria)} {emoji_categoria(categoria)}\n"
+        f"• {T('confirm_descripcion')}: {datos.get('descripcion')}\n"
+        f"• {T('confirm_fecha')}: {fecha_str}\n"
+        f"• {T('confirm_hora')}: {hora_str}\n"
+        f"• {T('confirm_tipo_gasto')}"
     )
 
 def formatear_confirmacion_lote(gastos: list, ingresos: list) -> str:
     total = len(gastos) + len(ingresos)
     if total == 0:
-        return "🧌 No pude leer ningún movimiento en ese pergamino. ¿Tienes una imagen más clara?"
+        return T("lote_vacio")
 
     fecha_str, hora_str = formatear_fecha_hora_actual()
-    lineas = [f"📯 {total} Transacciones registradas", f"🌔 {fecha_str} — ⏳ {hora_str}", ""]
+    lineas = [T("lote_titulo", total=total), T("lote_fecha", fecha=fecha_str, hora=hora_str), ""]
 
     if gastos:
         total_gastos = sum(float(g.get("monto", 0)) for g in gastos)
-        lineas.append(f"🍂 Gastos ({formatear_monto_corto(total_gastos)}):")
+        lineas.append(T("lote_gastos", total=formatear_monto_corto(total_gastos)))
         for g in gastos:
-            emoji_cat = CATEGORIA_EMOJIS.get(g.get("categoria", "Miscelánea"), "❓")
-            lineas.append(f". {emoji_cat} {g.get('descripcion','')} — {g.get('categoria','')} - {formatear_monto_corto(g.get('monto', 0))}")
+            cat = g.get("categoria", "Miscelánea")
+            lineas.append(f". {emoji_categoria(cat)} {g.get('descripcion','')} — {nombre_categoria(g.get('categoria',''))} - {formatear_monto_corto(g.get('monto', 0))}")
         lineas.append("")
 
     if ingresos:
         total_ingresos = sum(float(i.get("monto", 0)) for i in ingresos)
-        lineas.append(f"🪎 Ingresos ({formatear_monto_corto(total_ingresos)}):")
+        lineas.append(T("lote_ingresos", total=formatear_monto_corto(total_ingresos)))
         for i in ingresos:
-            emoji_cat = emoji_ingreso(i.get("categoria", "Miscelánea"))
-            lineas.append(f". {emoji_cat} {i.get('descripcion','')} — {i.get('categoria','')} - {formatear_monto_corto(i.get('monto', 0))}")
+            cat = i.get("categoria", "Miscelánea")
+            lineas.append(f". {emoji_ingreso(cat)} {i.get('descripcion','')} — {nombre_ingreso(i.get('categoria',''))} - {formatear_monto_corto(i.get('monto', 0))}")
 
     return "\n".join(lineas).rstrip()
 
@@ -1528,15 +1963,17 @@ async def manejar_eliminacion(numero_remitente: str, descripcion_buscada: str, t
 
     if not candidato:
         texto_busq = f' que coincida con "{descripcion_buscada}"' if descripcion_buscada else ""
-        await enviar_mensaje_whatsapp(numero_remitente, f"🧌 No hallé ningún registro en los libros{texto_busq}.")
+        await enviar_mensaje_whatsapp(numero_remitente, T("elim_no_encontrado", busq=texto_busq))
         return
 
     if es_ingreso:
         ok = await eliminar_ingreso(candidato["id"])
         emoji_cat = emoji_ingreso(candidato.get("categoria"))
+        cat_visible = nombre_ingreso(candidato.get("categoria"))
     else:
         ok = await eliminar_gasto(candidato["id"])
-        emoji_cat = CATEGORIA_EMOJIS.get(candidato.get("categoria"), "❓")
+        emoji_cat = emoji_categoria(candidato.get("categoria"))
+        cat_visible = nombre_categoria(candidato.get("categoria"))
 
     total_candidatos = len(candidatos_gasto) + len(candidatos_ingreso)
     tipo_log = "ingreso" if es_ingreso else "gasto"
@@ -1549,12 +1986,12 @@ async def manejar_eliminacion(numero_remitente: str, descripcion_buscada: str, t
         ) if total_candidatos > 1 else ""
         await enviar_mensaje_whatsapp(
             numero_remitente,
-            f"🧙🏻‍♂️ Registro eliminado de las arcas\n"
-            f"• {candidato.get('descripcion')} ({formatear_monto_corto(candidato.get('monto'))}) 🪶\n"
-            f"• Categoria: {candidato.get('categoria')}{extra} {emoji_cat}"
+            T("elim_titulo") + "\n"
+            + T("elim_linea", desc=candidato.get("descripcion"), monto=formatear_monto_corto(candidato.get("monto"))) + "\n"
+            + T("elim_cat", cat=cat_visible, extra=extra, emoji=emoji_cat)
         )
     else:
-        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo eliminar ese registro. Intenta de nuevo en un momento.")
+        await enviar_mensaje_whatsapp(numero_remitente, T("elim_error"))
 
 async def manejar_respuesta_a_transaccion(numero_remitente: str, wamid_original: str, texto: str) -> bool:
     """Se llama cuando el mensaje entrante es una RESPUESTA (el usuario deslizó/citó un mensaje
@@ -1578,19 +2015,21 @@ async def manejar_respuesta_a_transaccion(numero_remitente: str, wamid_original:
         if es_ingreso:
             ok = await eliminar_ingreso(registro["id"])
             emoji_cat = emoji_ingreso(registro.get("categoria"))
+            cat_visible = nombre_ingreso(registro.get("categoria"))
         else:
             ok = await eliminar_gasto(registro["id"])
-            emoji_cat = CATEGORIA_EMOJIS.get(registro.get("categoria"), "❓")
+            emoji_cat = emoji_categoria(registro.get("categoria"))
+            cat_visible = nombre_categoria(registro.get("categoria"))
         print(f"🧙🏻‍♂️ Eliminación por respuesta: '{registro.get('descripcion')}' ({numero_remitente})")
         if ok:
             await enviar_mensaje_whatsapp(
                 numero_remitente,
-                f"🧙🏻‍♂️ Registro eliminado de las arcas\n"
-                f"• {registro.get('descripcion')} ({formatear_monto_corto(registro.get('monto'))}) 🪶\n"
-                f"• Categoria: {registro.get('categoria')} {emoji_cat}"
+                T("elim_titulo") + "\n"
+                + T("elim_linea", desc=registro.get("descripcion"), monto=formatear_monto_corto(registro.get("monto"))) + "\n"
+                + T("elim_cat", cat=cat_visible, extra="", emoji=emoji_cat)
             )
         else:
-            await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo eliminar ese registro. Intenta de nuevo en un momento.")
+            await enviar_mensaje_whatsapp(numero_remitente, T("elim_error"))
         return True
 
     # --- Si no, se interpreta como un cambio de categoría ---
@@ -1602,30 +2041,28 @@ async def manejar_respuesta_a_transaccion(numero_remitente: str, wamid_original:
         categoria_nueva = await extraer_categoria_con_ia(texto, categorias_validas)
 
     if not categoria_nueva:
-        await enviar_mensaje_whatsapp(
-            numero_remitente,
-            "🧌 No reconocí esa categoría. Responde con el nombre de una categoría válida, "
-            "o escribe \"elimina\" para borrar este registro."
-        )
+        await enviar_mensaje_whatsapp(numero_remitente, T("recl_categoria_invalida"))
         return True
 
     if es_ingreso:
         ok = await actualizar_categoria_ingreso(registro["id"], categoria_nueva)
         emoji_cat = emoji_ingreso(categoria_nueva)
+        cat_visible = nombre_ingreso(categoria_nueva)
     else:
         ok = await actualizar_categoria_gasto(registro["id"], categoria_nueva)
-        emoji_cat = CATEGORIA_EMOJIS.get(categoria_nueva, "❓")
+        emoji_cat = emoji_categoria(categoria_nueva)
+        cat_visible = nombre_categoria(categoria_nueva)
 
     print(f"📝 Corrección de categoría por respuesta: '{registro.get('descripcion')}' -> {categoria_nueva} ({numero_remitente})")
     if ok:
         await enviar_mensaje_whatsapp(
             numero_remitente,
-            f"🧙🏻‍♂️ Registro reclasificado\n"
-            f"• {registro.get('descripcion')} ({formatear_monto_corto(registro.get('monto'))}) 🪶\n"
-            f"• Ahora está en: {categoria_nueva} {emoji_cat}"
+            T("recl_titulo") + "\n"
+            + T("recl_linea", desc=registro.get("descripcion"), monto=formatear_monto_corto(registro.get("monto"))) + "\n"
+            + T("recl_ahora", cat=cat_visible, extra="", emoji=emoji_cat)
         )
     else:
-        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo reclasificar ese registro. Intenta de nuevo en un momento.")
+        await enviar_mensaje_whatsapp(numero_remitente, T("recl_error"))
     return True
 
 async def cerrar_ciclo_y_registrar_ahorro_si_corresponde(numero_remitente: str, datos_ingreso: dict):
@@ -1655,9 +2092,9 @@ async def cerrar_ciclo_y_registrar_ahorro_si_corresponde(numero_remitente: str, 
     print(f"🏛️ Ciclo cerrado para {numero_remitente}: balance {balance:.2f} ({desde.date()} - {hasta.date()})")
 
     if balance >= 0:
-        mensaje_fortuna = f"🏛️ Has sumado {formatear_monto(balance)} a tu fortuna."
+        mensaje_fortuna = T("ciclo_suma", monto=formatear_monto(balance))
     else:
-        mensaje_fortuna = f"🏛️ Has restado {formatear_monto(abs(balance))} a tu fortuna."
+        mensaje_fortuna = T("ciclo_resta", monto=formatear_monto(abs(balance)))
     await enviar_mensaje_whatsapp(numero_remitente, mensaje_fortuna)
 
     # Exportar automáticamente el resumen (Excel) del ciclo que se acaba de cerrar
@@ -1666,10 +2103,10 @@ async def cerrar_ciclo_y_registrar_ahorro_si_corresponde(numero_remitente: str, 
     contenido_excel = generar_excel_gastos(gastos_ciclo, ingresos_ciclo)
     media_id = await subir_documento_whatsapp(contenido_excel, nombre_archivo)
     if media_id:
-        caption = f"🧧 Libro de cuentas — Ciclo cerrado ({etiqueta_ciclo})"
+        caption = T("ciclo_caption", etiqueta=etiqueta_ciclo)
         await enviar_documento_whatsapp(numero_remitente, media_id, nombre_archivo, caption)
     else:
-        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El escriba no ha podido preparar el pergamino del ciclo cerrado, pero tu fortuna quedó registrada.")
+        await enviar_mensaje_whatsapp(numero_remitente, T("ciclo_error_excel"))
 
 async def registrar_gasto_y_confirmar(numero_remitente: str, datos: dict):
     """Guarda el gasto, envía la confirmación y asocia el wamid del mensaje enviado al
@@ -1697,6 +2134,9 @@ async def registrar_ingreso_y_confirmar(numero_remitente: str, datos: dict):
 # --- 6. RUTAS DEL WEBHOOK ---
 async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
     try:
+        # Cada usuario ve el bot con su propio tema (apariencia); los datos son los mismos
+        TEMA_ACTUAL.set(await obtener_tema_usuario(numero_remitente))
+
         # Si el usuario respondió ("deslizó"/citó) un mensaje de confirmación de una
         # transacción, tratamos ese caso aparte: puede pedir eliminarla o cambiarle la
         # categoría, identificándola sin ambigüedad por el wamid del mensaje citado.
@@ -1712,8 +2152,12 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
         if message["type"] == "text":
             texto = message["text"]["body"]
             periodo = detectar_periodo_informe(texto)
+            solicitud_tema = detectar_solicitud_tema(texto)
 
-            if detectar_solicitud_exportar(texto):
+            if solicitud_tema is not None:
+                # El usuario quiere ver o cambiar el tema (ej. "tema clasico", "tema rpg")
+                await manejar_cambio_tema(numero_remitente, solicitud_tema)
+            elif detectar_solicitud_exportar(texto):
                 # El usuario pidió exportar un Excel (ej. "exportar trimestre", "exportar julio", "exportar Q2")
                 categoria = detectar_categoria_informe(texto)
                 desde, hasta, nombre_archivo_base, etiqueta_caption = await preparar_exportacion(texto, numero_remitente)
@@ -1722,16 +2166,16 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                 print(f"🧧 Exportación '{nombre_archivo_base}'{' / ' + categoria if categoria else ''} solicitada por {numero_remitente} ({len(gastos)} gastos, {len(ingresos)} ingresos)")
 
                 if not gastos and not ingresos:
-                    await enviar_mensaje_whatsapp(numero_remitente, f"🧌 No hay movimientos en tus arcas durante {etiqueta_caption}.")
+                    await enviar_mensaje_whatsapp(numero_remitente, T("export_vacio", etiqueta=etiqueta_caption))
                 else:
                     contenido_excel = generar_excel_gastos(gastos, ingresos)
                     nombre_archivo = f"{nombre_archivo_base}.xlsx"
                     media_id = await subir_documento_whatsapp(contenido_excel, nombre_archivo)
                     if media_id:
-                        caption = f"🧧 Libro de cuentas\n • {etiqueta_caption}"
+                        caption = T("export_caption", etiqueta=etiqueta_caption)
                         await enviar_documento_whatsapp(numero_remitente, media_id, nombre_archivo, caption)
                     else:
-                        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El escriba no ha podido preparar el pergamino. Inténtalo de nuevo en unos instantes.")
+                        await enviar_mensaje_whatsapp(numero_remitente, T("export_error"))
             elif detectar_solicitud_eliminar(texto):
                 # El usuario pidió eliminar/borrar/cancelar un gasto o ingreso ya registrado.
                 # OJO: esta comprobación va ANTES que la de "ingreso", porque un mensaje como
@@ -1839,26 +2283,26 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     categoria_nueva = resolver_categoria(clasificacion.get("categoria_nueva", ""), CATEGORIAS)
 
                     if not descripcion_buscada or not categoria_nueva:
-                        await enviar_mensaje_whatsapp(numero_remitente, "🧌 El escriba no ha logrado interpretar tu petición. ¿Puedes reformularlo? (ej. \"pon el gasto de Jennifer en Refugio\")")
+                        await enviar_mensaje_whatsapp(numero_remitente, T("recl_no_interpreta", ejemplo=nombre_categoria("Refugio")))
                     else:
                         candidatos = await buscar_gastos_por_descripcion(numero_remitente, descripcion_buscada)
                         if not candidatos:
-                            await enviar_mensaje_whatsapp(numero_remitente, f"🧌 No hallé ningún registro en los libros que coincida con \"{descripcion_buscada}\".")
+                            await enviar_mensaje_whatsapp(numero_remitente, T("recl_no_hallado", busca=descripcion_buscada))
                         else:
                             gasto = candidatos[0]  # el más reciente
                             ok = await actualizar_categoria_gasto(gasto["id"], categoria_nueva)
-                            emoji_cat = CATEGORIA_EMOJIS.get(categoria_nueva, "❓")
+                            emoji_cat = emoji_categoria(categoria_nueva)
                             print(f"📝 Corrección de categoría: '{gasto.get('descripcion')}' -> {categoria_nueva} ({numero_remitente})")
                             if ok:
                                 extra = f"\n\n(Había {len(candidatos) - 1} coincidencia(s) más sin modificar; sé más específico si quieres cambiar otra)" if len(candidatos) > 1 else ""
                                 await enviar_mensaje_whatsapp(
                                     numero_remitente,
-                                    f"🧙🏻‍♂️ Registro reclasificado\n"
-                                    f"• {gasto.get('descripcion')} ({formatear_monto_corto(gasto.get('monto'))}) 🪶\n"
-                                    f"• Ahora está en: {categoria_nueva}{extra} {emoji_cat}"
+                                    T("recl_titulo") + "\n"
+                                    + T("recl_linea", desc=gasto.get("descripcion"), monto=formatear_monto_corto(gasto.get("monto"))) + "\n"
+                                    + T("recl_ahora", cat=nombre_categoria(categoria_nueva), extra=extra, emoji=emoji_cat)
                                 )
                             else:
-                                await enviar_mensaje_whatsapp(numero_remitente, "🧌 El archivero no pudo reclasificar ese gasto. Intenta de nuevo en un momento.")
+                                await enviar_mensaje_whatsapp(numero_remitente, T("recl_error"))
 
                 elif intencion == "eliminar_transaccion":
                     descripcion_buscada = clasificacion.get("descripcion_buscada", "") or ""
@@ -1866,11 +2310,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
                     await manejar_eliminacion(numero_remitente, descripcion_buscada, tipo_sugerido)
 
                 elif intencion == "no_soportado":
-                    respuesta = clasificacion.get("respuesta") or (
-                        "🧌 No puedo ayudarte con eso. Puedo registrar tus gastos e ingresos "
-                        "(por texto o foto), generar resúmenes, calcular porcentajes/balance, "
-                        "corregir categorías, eliminar registros, y exportar tus datos a Excel."
-                    )
+                    respuesta = clasificacion.get("respuesta") or T("no_soportado")
                     print(f"🧌 Mensaje no soportado de {numero_remitente}: {texto!r}")
                     await enviar_mensaje_whatsapp(numero_remitente, respuesta)
 
@@ -1890,7 +2330,7 @@ async def procesar_mensaje_entrante(message: dict, numero_remitente: str):
             if not transcripcion:
                 await enviar_mensaje_whatsapp(
                     numero_remitente,
-                    "🧌 El escriba no logró descifrar tu mensaje de voz. ¿Puedes repetirlo o escribirlo?"
+                    T("audio_error")
                 )
                 return
 
@@ -1986,6 +2426,7 @@ def parsear_monto_wallet(valor) -> float:
 
 async def procesar_pago_wallet(numero: str, monto: float, comercio: str):
     try:
+        TEMA_ACTUAL.set(await obtener_tema_usuario(numero))
         # Antiduplicados: el disparador de Atajos a veces se ejecuta dos veces por el mismo pago
         clave = (round(monto, 2), normalizar(comercio))
         ahora = datetime.now(ZONA_HORARIA)
