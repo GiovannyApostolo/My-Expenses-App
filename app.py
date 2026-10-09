@@ -981,7 +981,7 @@ MENSAJE_MODO_SUPERVIVENCIA = (
 # Para cambiarlo, el usuario escribe "tema clasico" o "tema rpg".
 
 TEMAS = {
-    "rpg": {
+    "RPG": {
         "nombre": "RPG (fantasía oscura)",
         "categorias": {c: c for c in CATEGORIAS},
         "ingresos": {c: c for c in CATEGORIAS_INGRESO},
@@ -1053,10 +1053,10 @@ TEMAS = {
                 "corregir categorías, eliminar registros, y exportar tus datos a Excel. "
                 "Escribe \"tema\" para cambiar el aspecto del bot."
             ),
-            "tema_cambiado": "🎨 Tema cambiado: vuelves al reino del RPG de fantasía oscura. Tus registros siguen intactos.",
+            "tema_cambiado": "🎨 Tema cambiado: Vuelves al reino de las cenizas. Tus registros siguen intactos.",
         },
     },
-    "clasico": {
+    "Clásico": {
         "nombre": "Clásico (finanzas personales)",
         # nombre interno (el que se guarda en Supabase) -> nombre que ve el usuario
         "categorias": {
@@ -1076,9 +1076,9 @@ TEMAS = {
             "Miscelánea": "Otros",
         },
         "ingresos": {
-            "Botín principal": "Ingreso principal",
-            "Botín de mercenario": "Trabajo extra",
-            "Recompensas extra": "Bonificaciones",
+            "Botín principal": "Sueldo",
+            "Botín de mercenario": "Freelance",
+            "Recompensas extra": "Ingresos extra",
             "Ofrenda de aliados": "Regalos recibidos",
             "Objeto encontrado": "Otros ingresos",
         },
@@ -1127,7 +1127,7 @@ TEMAS = {
             (75, "🟠 GASTO ELEVADO",
              "Has alcanzado el 75% de tus ingresos. Cada gasto adicional reduce tu margen de ahorro."),
             (80, "🔴 MARGEN CRÍTICO",
-             "Solo te queda un 20% de tus ingresos. Se recomienda limitar los gastos hasta el final del ciclo."),
+             "Solo te queda un 20% de tus ingresos. Se recomienda limitar los gastos hasta el final del mes."),
             (90, "🚨 ÚLTIMO TRAMO",
              "Has gastado más del 90% de tus ingresos. Cualquier gasto extra te deja casi sin margen."),
             (100, "⛔ PRESUPUESTO AGOTADO",
@@ -1142,7 +1142,7 @@ TEMAS = {
             "error_transaccion": "⚠️ No pude entender esa transacción. ¿Puedes escribirla de otra forma?",
             "confirm_titulo": "✅ Transacción registrada",
             "confirm_monto": "💶 Monto",
-            "confirm_categoria": "🔖 Categoría",
+            "confirm_categoria": "🏷️ Categoría",
             "confirm_descripcion": "📝 Descripción",
             "confirm_fecha": "📅 Fecha",
             "confirm_hora": "⏰ Hora",
