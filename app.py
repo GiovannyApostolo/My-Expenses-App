@@ -981,7 +981,7 @@ MENSAJE_MODO_SUPERVIVENCIA = (
 # Para cambiarlo, el usuario escribe "tema clasico" o "tema rpg".
 
 TEMAS = {
-    "RPG": {
+    "rpg": {
         "nombre": "RPG (fantasía oscura)",
         "categorias": {c: c for c in CATEGORIAS},
         "ingresos": {c: c for c in CATEGORIAS_INGRESO},
@@ -1056,7 +1056,7 @@ TEMAS = {
             "tema_cambiado": "🎨 Tema cambiado: Vuelves al reino de las cenizas. Tus registros siguen intactos.",
         },
     },
-    "Clásico": {
+    "clasico": {
         "nombre": "Clásico (finanzas personales)",
         # nombre interno (el que se guarda en Supabase) -> nombre que ve el usuario
         "categorias": {
@@ -1220,7 +1220,7 @@ TEMA_ACTUAL = ContextVar("tema_actual", default=TEMA_DEFECTO)
 CACHE_TEMAS = {}
 
 def tema_actual() -> dict:
-    return TEMAS.get(TEMA_ACTUAL.get(), TEMAS[TEMA_DEFECTO])
+    return TEMAS.get(TEMA_ACTUAL.get()) or TEMAS.get(TEMA_DEFECTO) or next(iter(TEMAS.values()))
 
 def T(clave: str, **kw) -> str:
     """Texto del tema actual. Si lleva parámetros se rellenan con str.format."""
